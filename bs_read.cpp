@@ -146,3 +146,19 @@ int bs_read_ue(bs_t *s)
     }
     return ((1 << i) - 1 + bs_read(s, i));
 }
+
+int bs_read_se(bs_t* b)
+{
+   // step1.解码出codeNum，记为r
+   int r = bs_read_ue(b);
+   // step2.判断r的奇偶性
+   if (r & 0x01) // 如果为奇数，说明编码前>0
+   {
+       r = (r+1)/2;
+   }
+   else // 如果为偶数，说明编码前<=0
+   {
+       r = -(r/2);
+   }
+   return r;
+}

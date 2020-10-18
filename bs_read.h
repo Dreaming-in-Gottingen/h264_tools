@@ -94,3 +94,5 @@ uint32_t bs_read1(bs_t *s);
         无符号整数指数哥伦布码编码 http://wmnmtm.blog.163.com/blog/static/38245714201172623027946/
 */
 int bs_read_ue(bs_t *s);
+
+int bs_read_se(bs_t *s);

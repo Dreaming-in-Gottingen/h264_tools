@@ -69,6 +69,7 @@ typedef struct {
   unsigned  cpb_cnt;                                            // ue(v)
   unsigned  bit_rate_scale;                                     // u(4)
   unsigned  cpb_size_scale;                                     // u(4)
+  //for (SchedSelIdx=0; SchedSelIdx<=cpb_cnt; SchedSelIdx++)
     unsigned  bit_rate_value [MAXIMUMVALUEOFcpb_cnt];           // ue(v)
     unsigned  cpb_size_value[MAXIMUMVALUEOFcpb_cnt];            // ue(v)
     unsigned  vbr_cbr_flag[MAXIMUMVALUEOFcpb_cnt];              // u(1)
@@ -80,24 +81,24 @@ typedef struct {
 
 typedef struct {
   Boolean      aspect_ratio_info_present_flag;                  // u(1)
-    unsigned  aspect_ratio_idc;                                 // u(8)
-      unsigned  sar_width;                                      // u(16)
-      unsigned  sar_height;                                     // u(16)
+    unsigned     aspect_ratio_idc;                              // u(8)
+      unsigned     sar_width;                                   // u(16)
+      unsigned     sar_height;                                  // u(16)
   Boolean      overscan_info_present_flag;                      // u(1)
     Boolean      overscan_appropriate_flag;                     // u(1)
   Boolean      video_signal_type_present_flag;                  // u(1)
-    unsigned  video_format;                                     // u(3)
+    unsigned     video_format;                                  // u(3)
     Boolean      video_full_range_flag;                         // u(1)
     Boolean      colour_description_present_flag;               // u(1)
-      unsigned  colour_primaries;                               // u(8)
-      unsigned  transfer_characteristics;                       // u(8)
-      unsigned  matrix_coefficients;                            // u(8)
+      unsigned     colour_primaries;                            // u(8)
+      unsigned     transfer_characteristics;                    // u(8)
+      unsigned     matrix_coefficients;                         // u(8)
   Boolean      chroma_location_info_present_flag;               // u(1)
-    unsigned  chroma_location_frame;                            // ue(v)
-    unsigned  chroma_location_field;                            // ue(v)
+    unsigned     chroma_location_frame;                         // ue(v)
+    unsigned     chroma_location_field;                         // ue(v)
   Boolean      timing_info_present_flag;                        // u(1)
-    unsigned  num_units_in_tick;                                // u(32)
-    unsigned  time_scale;                                       // u(32)
+    unsigned     num_units_in_tick;                             // u(32)
+    unsigned     time_scale;                                    // u(32)
     Boolean      fixed_frame_rate_flag;                         // u(1)
   Boolean      nal_hrd_parameters_present_flag;                 // u(1)
     hrd_parameters_t nal_hrd_parameters;                        // hrd_paramters_t
@@ -105,14 +106,15 @@ typedef struct {
     hrd_parameters_t vcl_hrd_parameters;                        // hrd_paramters_t
   // if ((nal_hrd_parameters_present_flag || (vcl_hrd_parameters_present_flag))
     Boolean      low_delay_hrd_flag;                            // u(1)
+  Boolean      pic_struct_present_flag;                         // u(1)
   Boolean      bitstream_restriction_flag;                      // u(1)
     Boolean      motion_vectors_over_pic_boundaries_flag;       // u(1)
-    unsigned  max_bytes_per_pic_denom;                          // ue(v)
-    unsigned  max_bits_per_mb_denom;                            // ue(v)
-    unsigned  log2_max_mv_length_vertical;                      // ue(v)
-    unsigned  log2_max_mv_length_horizontal;                    // ue(v)
-    unsigned  max_dec_frame_reordering;                         // ue(v)
-    unsigned  max_dec_frame_buffering;                          // ue(v)
+    unsigned     max_bytes_per_pic_denom;                       // ue(v)
+    unsigned     max_bits_per_mb_denom;                         // ue(v)
+    unsigned     log2_max_mv_length_vertical;                   // ue(v)
+    unsigned     log2_max_mv_length_horizontal;                 // ue(v)
+    unsigned     max_dec_frame_reordering;                      // ue(v)
+    unsigned     max_dec_frame_buffering;                       // ue(v)
 } vui_seq_parameters_t;
 
 #define MAXnum_ref_frames_in_pic_order_cnt_cycle  256
@@ -364,12 +366,11 @@ static int ParseAndDumpSPSInfo(NALU_t * nal)
         fprintf(myout, "  log2_max_pic_order_cnt_lsb_minus4:          %d\n", sps.log2_max_pic_order_cnt_lsb_minus4);
     } else if (sps.pic_order_cnt_type == 1) {
         sps.delta_pic_order_always_zero_flag = (Boolean)bs_read1(&s);
-        //sps.offset_for_non_ref_pic = se_v(&s);
-        //sps.offset_for_top_to_bottom_field = se_v(&s);
+        sps.offset_for_non_ref_pic = bs_read_se(&s);
+        sps.offset_for_top_to_bottom_field = bs_read_se(&s);
         sps.num_ref_frames_in_pic_order_cnt_cycle = bs_read_ue(&s);
         for (int i=0; i<sps.num_ref_frames_in_pic_order_cnt_cycle; i++)
-            ;
-            //sps.offset_for_ref_frame[i] = se_v(&s);
+            sps.offset_for_ref_frame[i] = bs_read_se(&s);
     }
 
     sps.num_ref_frames = bs_read_ue(&s);
