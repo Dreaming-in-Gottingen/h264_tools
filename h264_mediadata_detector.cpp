@@ -170,6 +170,40 @@ typedef struct {
     vui_seq_parameters_t vui_seq_parameters;                    //
 } seq_parameter_set_rbsp_t;
 
+#define MAXnum_slice_groups_minus1  8
+typedef struct {
+  Boolean   Valid;                  // indicates the parameter set is valid
+  unsigned  pic_parameter_set_id;                               // ue(v)
+  unsigned  seq_parameter_set_id;                               // ue(v)
+  Boolean   entropy_coding_mode_flag;                           // u(1)
+  // if( pic_order_cnt_type < 2 )  in the sequence parameter set
+  Boolean      pic_order_present_flag;                          // u(1)
+  unsigned  num_slice_groups_minus1;                            // ue(v)
+  // if( num_slice_groups_minus1 > 0 )
+    unsigned  slice_group_map_type;                             // ue(v)
+    // if( slice_group_map_type == 0 )
+      unsigned  run_length_minus1[MAXnum_slice_groups_minus1];  // ue(v)
+    // else if( slice_group_map_type == 2 )
+      unsigned  top_left[MAXnum_slice_groups_minus1];           // ue(v)
+      unsigned  bottom_right[MAXnum_slice_groups_minus1];       // ue(v)
+    // else if( slice_group_map_type == 3 || 4 || 5 )
+      Boolean   slice_group_change_direction_flag;              // u(1)
+      unsigned  slice_group_change_rate_minus1;                 // ue(v)
+    // else if( slice_group_map_type == 6 )
+      unsigned  num_slice_group_map_units_minus1;               // ue(v)
+      unsigned  *slice_group_id;                                // complete MBAmap u(v)
+  unsigned  num_ref_idx_l0_active_minus1;                       // ue(v)
+  unsigned  num_ref_idx_l1_active_minus1;                       // ue(v)
+  Boolean   weighted_pred_flag;                                 // u(1)
+  unsigned  weighted_bipred_idc;                                // u(2)
+  int       pic_init_qp_minus26;                                // se(v)
+  int       pic_init_qs_minus26;                                // se(v)
+  int       chroma_qp_index_offset;                             // se(v)
+  Boolean   deblocking_filter_control_present_flag;             // u(1)
+  Boolean   constrained_intra_pred_flag;                        // u(1)
+  Boolean   redundant_pic_cnt_present_flag;                     // u(1)
+} pic_parameter_set_rbsp_t;
+
 
 FILE *h264bitstream = NULL;                // the bit stream file
 
@@ -419,6 +453,66 @@ static int ParseAndDumpSPSInfo(NALU_t * nal)
 
 static int ParseAndDumpPPSInfo(NALU_t * nal)
 {
+    bs_t s;
+    pic_parameter_set_rbsp_t pps;
+    FILE *myout = stdout;
+
+    bs_init(&s, nal->buf+1, nal->len - 1);
+
+    printf("---------------------PPS info--------------------------\n");
+    pps.pic_parameter_set_id = bs_read_ue(&s);
+    fprintf(myout, "pic_parameter_set_id:          %u\n", pps.pic_parameter_set_id);
+    pps.seq_parameter_set_id = bs_read_ue(&s);
+    fprintf(myout, "seq_parameter_set_id:          %u\n", pps.seq_parameter_set_id);
+    pps.entropy_coding_mode_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "entropy_coding_mode_flag:      %u\n", pps.entropy_coding_mode_flag);
+    pps.pic_order_present_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "pic_order_present_flag:        %u\n", pps.pic_order_present_flag);
+    pps.num_slice_groups_minus1 = bs_read_ue(&s);
+    fprintf(myout, "num_slice_groups_minus1:       %u\n", pps.num_slice_groups_minus1);
+    if (pps.num_slice_groups_minus1 > 0) {
+        pps.slice_group_map_type = bs_read_ue(&s);
+        unsigned type = pps.slice_group_map_type;
+        if (type == 0) {
+            for (int i=0; i<MAXnum_slice_groups_minus1; i++)
+                pps.run_length_minus1[i] = bs_read_ue(&s);
+        } else if (type == 2) {
+            for (int i=0; i<MAXnum_slice_groups_minus1; i++) {
+                pps.top_left[i] = bs_read_ue(&s);
+                pps.bottom_right[i] = bs_read_ue(&s);
+            }
+        } else if (type==3 || type==4 || type==5) {
+            pps.slice_group_change_direction_flag = (Boolean)bs_read1(&s);
+            pps.slice_group_change_rate_minus1 = bs_read_ue(&s);
+        } else if (type == 6) {
+            pps.num_slice_group_map_units_minus1 = bs_read_ue(&s);
+            pps.slice_group_id = NULL; // need to be Fixed
+        }
+    }
+    pps.num_ref_idx_l0_active_minus1 = bs_read_ue(&s);
+    fprintf(myout, "num_ref_idx_l0_active_minus1:  %u\n", pps.num_ref_idx_l0_active_minus1);
+    pps.num_ref_idx_l1_active_minus1 = bs_read_ue(&s);
+    fprintf(myout, "num_ref_idx_l1_active_minus1:  %u\n", pps.num_ref_idx_l1_active_minus1);
+    pps.weighted_pred_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "weighted_pred_flag:            %u\n", pps.weighted_pred_flag);
+    pps.weighted_bipred_idc = bs_read(&s, 2);
+    fprintf(myout, "weighted_bipred_idc:           %u\n", pps.weighted_bipred_idc);
+    pps.pic_init_qp_minus26 = bs_read_se(&s);
+    fprintf(myout, "pic_init_qp_minus26:          %2d\n", pps.pic_init_qp_minus26);
+    pps.pic_init_qs_minus26 = bs_read_se(&s);
+    fprintf(myout, "pic_init_qs_minus26:          %2d\n", pps.pic_init_qs_minus26);
+    pps.chroma_qp_index_offset = bs_read_se(&s);
+    fprintf(myout, "chroma_qp_index_offset:       %2d\n", pps.chroma_qp_index_offset);
+    pps.deblocking_filter_control_present_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "deblocking_filter_control_present_flag:%u\n", pps.deblocking_filter_control_present_flag);
+    pps.constrained_intra_pred_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "constrained_intra_pred_flag:   %u\n", pps.constrained_intra_pred_flag);
+    pps.redundant_pic_cnt_present_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "redundant_pic_cnt_present_flag:%u\n", pps.redundant_pic_cnt_present_flag);
+
+    pps.Valid = TRUE;
+    printf("-------------------------------------------------------\n");
+
     return 0;
 }
 
@@ -538,7 +632,7 @@ int main(int argc, char **argv)
 {
     if (argc != 2)
     {
-        puts("error input! fmt: cmd url");
+        puts("error input! usage: cmd url");
         return -1;
     }
     simplest_h264_parser(argv[1]);
