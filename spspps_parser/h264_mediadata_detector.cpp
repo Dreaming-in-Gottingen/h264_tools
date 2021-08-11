@@ -207,6 +207,8 @@ typedef struct {
 
 FILE *h264bitstream = NULL;                // the bit stream file
 
+seq_parameter_set_rbsp_t gCurSps;
+pic_parameter_set_rbsp_t gCurPps;
 
 static inline int FindStartCodeLen3 (unsigned char *Buf){
     if(Buf[0]==0 && Buf[1]==0 && Buf[2]==1)
@@ -301,15 +303,22 @@ static int GetFrameType(NALU_t * nal)
 {
     bs_t s;
     int frame_type = 0;
+    static FILE *myout = fopen("slice_header.txt", "wb");
+    static int nalu_idx = 0;
 
     bs_init(&s, nal->buf+1, nal->len - 1);
 
     if (nal->nal_unit_type == NALU_TYPE_SLICE || nal->nal_unit_type ==  NALU_TYPE_IDR)
     {
-        /* i_first_mb */
-        bs_read_ue(&s);
-        /* picture type */
+        // decode slice header
+        fprintf(myout, "------------------[nalu_idx=%d] slice header info-----------------\n", nalu_idx);
+
+        /* read the first part of the header (only the pic_parameter_set_id) */
+        int start_mb_nr = bs_read_ue(&s); // first mb nr in slice
+        fprintf(myout, "SH: start_mb_nr=%d\n", start_mb_nr);
+        /* picture/slice type */
         frame_type = bs_read_ue(&s);
+        fprintf(myout, "SH: frame_type=%d\n", frame_type);
         switch(frame_type)
         {
         case 0: case 5: /* P */
@@ -318,11 +327,11 @@ static int GetFrameType(NALU_t * nal)
         case 1: case 6: /* B */
             nal->frame_type = FRAME_TYPE_B;
             break;
-        case 3: case 8: /* SP */
-            nal->frame_type = FRAME_TYPE_P;
-            break;
         case 2: case 7: /* I */
             nal->frame_type = FRAME_TYPE_I;
+            break;
+        case 3: case 8: /* SP */
+            nal->frame_type = FRAME_TYPE_P;
             break;
         case 4: case 9: /* SI */
             nal->frame_type = FRAME_TYPE_I;
@@ -331,11 +340,37 @@ static int GetFrameType(NALU_t * nal)
             printf("unknown frame type! nalu_data[%#x,%#x,%#x,%#x]\n", nal->buf[0], nal->buf[1], nal->buf[2], nal->buf[3]);
             break;
         }
+        int pps_id = bs_read_ue(&s);
+        fprintf(myout, "SH: pps_id=%d\n", pps_id);
+
+        /* read the scond part of the header (without the pic_parameter_set_id) */
+        int frame_nr = bs_read(&s, gCurSps.log2_max_frame_num_minus4 + 4);
+        fprintf(myout, "SH: frame_nr=%d\n", frame_nr);
+        if (gCurSps.frame_mbs_only_flag) {
+            // only support frame
+        } else {
+            // not support field
+        }
+
+        if (nal->nal_unit_type == NALU_TYPE_IDR) {
+            int idr_pic_id = bs_read_ue(&s);
+            fprintf(myout, "SH: idr_pic_id=%d\n", idr_pic_id);
+        }
+
+        if (gCurSps.pic_order_cnt_type == 0) {
+            int pic_order_cnt_lsb = bs_read(&s, gCurSps.log2_max_pic_order_cnt_lsb_minus4 + 4);
+            fprintf(myout, "SH: pic_order_cnt_lsb=%d\n", pic_order_cnt_lsb);
+            if (gCurPps.pic_order_present_flag && gCurSps.frame_mbs_only_flag) {
+                int delta_pic_order_cnt_bottom = bs_read_se(&s);
+                fprintf(myout, "SH: delta_pic_order_cnt_bottom=%d\n", delta_pic_order_cnt_bottom);
+            }
+        }
     }
     else
     {
         nal->frame_type = nal->nal_unit_type;
     }
+    nalu_idx++;
 
     return 0;
 }
@@ -343,110 +378,109 @@ static int GetFrameType(NALU_t * nal)
 static int ParseAndDumpSPSInfo(NALU_t * nal)
 {
     bs_t s;
-    seq_parameter_set_rbsp_t sps;
-    FILE *myout=stdout;
+    FILE *myout = NULL;
 
     bs_init(&s, nal->buf+1, nal->len - 1);
 
-    printf("---------------------SPS info--------------------------\n");
-    sps.profile_idc = bs_read(&s, 8);
-    fprintf(myout, "profile_idc:                            %d\n", sps.profile_idc);
+    fprintf(myout, "---------------------SPS info--------------------------\n");
+    gCurSps.profile_idc = bs_read(&s, 8);
+    fprintf(myout, "profile_idc:                            %d\n", gCurSps.profile_idc);
 
-    sps.constrained_set0_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "constrained_set0_flag:                  %d\n", sps.constrained_set0_flag);
-    sps.constrained_set1_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "constrained_set1_flag:                  %d\n", sps.constrained_set1_flag);
-    sps.constrained_set2_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "constrained_set2_flag:                  %d\n", sps.constrained_set2_flag);
+    gCurSps.constrained_set0_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "constrained_set0_flag:                  %d\n", gCurSps.constrained_set0_flag);
+    gCurSps.constrained_set1_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "constrained_set1_flag:                  %d\n", gCurSps.constrained_set1_flag);
+    gCurSps.constrained_set2_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "constrained_set2_flag:                  %d\n", gCurSps.constrained_set2_flag);
     int reserved_zero = bs_read(&s, 5);
     fprintf(myout, "reserved_zero:                          %d\n", reserved_zero);
     assert(reserved_zero == 0);
 
-    sps.level_idc = bs_read(&s, 8);
-    fprintf(myout, "level_idc:                              %d\n", sps.level_idc);
-    sps.seq_parameter_set_id = bs_read_ue(&s);
-    fprintf(myout, "seq_parameter_set_id:                   %d\n", sps.seq_parameter_set_id);
+    gCurSps.level_idc = bs_read(&s, 8);
+    fprintf(myout, "level_idc:                              %d\n", gCurSps.level_idc);
+    gCurSps.seq_parameter_set_id = bs_read_ue(&s);
+    fprintf(myout, "seq_parameter_set_id:                   %d\n", gCurSps.seq_parameter_set_id);
 
-    if (sps.profile_idc==100 || sps.profile_idc==110 || sps.profile_idc==122 || sps.profile_idc==144) {
-        sps.chroma_format_idc = bs_read_ue(&s);
-        fprintf(myout, "  chroma_format_idc:                          %d\n", sps.chroma_format_idc);
-        if (sps.chroma_format_idc == 3) {
-            sps.residual_colour_transform_flag = (Boolean)bs_read1(&s);
-            fprintf(myout, "    residual_colour_transform_flag:                   %d\n", sps.residual_colour_transform_flag);
+    if (gCurSps.profile_idc==100 || gCurSps.profile_idc==110 || gCurSps.profile_idc==122 || gCurSps.profile_idc==144) {
+        gCurSps.chroma_format_idc = bs_read_ue(&s);
+        fprintf(myout, "  chroma_format_idc:                          %d\n", gCurSps.chroma_format_idc);
+        if (gCurSps.chroma_format_idc == 3) {
+            gCurSps.residual_colour_transform_flag = (Boolean)bs_read1(&s);
+            fprintf(myout, "    residual_colour_transform_flag:                   %d\n", gCurSps.residual_colour_transform_flag);
         }
-        sps.bit_depth_luma_minus8 = bs_read_ue(&s);
-        fprintf(myout, "  bit_depth_luma_minus8:                      %d\n", sps.bit_depth_luma_minus8);
-        sps.bit_depth_chroma_minus8 = bs_read_ue(&s);
-        fprintf(myout, "  bit_depth_chroma_minus8:                    %d\n", sps.bit_depth_chroma_minus8);
-        sps.qpprime_y_zero_transform_bypass_flag = (Boolean)bs_read1(&s);
-        fprintf(myout, "  qpprime_y_zero_transform_bypass_flag:       %d\n", sps.qpprime_y_zero_transform_bypass_flag);
-        sps.seq_scaling_matrix_present_flag = (Boolean)bs_read1(&s);
-        fprintf(myout, "  seq_scaling_matrix_present_flag:            %d\n", sps.seq_scaling_matrix_present_flag);
-        if (sps.seq_scaling_matrix_present_flag) {
+        gCurSps.bit_depth_luma_minus8 = bs_read_ue(&s);
+        fprintf(myout, "  bit_depth_luma_minus8:                      %d\n", gCurSps.bit_depth_luma_minus8);
+        gCurSps.bit_depth_chroma_minus8 = bs_read_ue(&s);
+        fprintf(myout, "  bit_depth_chroma_minus8:                    %d\n", gCurSps.bit_depth_chroma_minus8);
+        gCurSps.qpprime_y_zero_transform_bypass_flag = (Boolean)bs_read1(&s);
+        fprintf(myout, "  qpprime_y_zero_transform_bypass_flag:       %d\n", gCurSps.qpprime_y_zero_transform_bypass_flag);
+        gCurSps.seq_scaling_matrix_present_flag = (Boolean)bs_read1(&s);
+        fprintf(myout, "  seq_scaling_matrix_present_flag:            %d\n", gCurSps.seq_scaling_matrix_present_flag);
+        if (gCurSps.seq_scaling_matrix_present_flag) {
             for (int i=0; i<8; i++) {
-                sps.seq_scaling_list_present_flag[i] = (Boolean)bs_read1(&s);
-                fprintf(myout, "    seq_scaling_list_present_flag:                %d\n", sps.seq_scaling_list_present_flag[i]);
+                gCurSps.seq_scaling_list_present_flag[i] = (Boolean)bs_read1(&s);
+                fprintf(myout, "    seq_scaling_list_present_flag:                %d\n", gCurSps.seq_scaling_list_present_flag[i]);
             }
         }
     }
 
-    sps.log2_max_frame_num_minus4 = bs_read_ue(&s);
-    fprintf(myout, "log2_max_frame_num_minus4:              %d\n", sps.log2_max_frame_num_minus4);
+    gCurSps.log2_max_frame_num_minus4 = bs_read_ue(&s);
+    fprintf(myout, "log2_max_frame_num_minus4:              %d\n", gCurSps.log2_max_frame_num_minus4);
 
-    sps.pic_order_cnt_type = bs_read_ue(&s);
-    fprintf(myout, "pic_order_cnt_type:                     %d\n", sps.pic_order_cnt_type);
-    if (sps.pic_order_cnt_type == 0) {
-        sps.log2_max_pic_order_cnt_lsb_minus4 = bs_read_ue(&s);
-        fprintf(myout, "  log2_max_pic_order_cnt_lsb_minus4:          %d\n", sps.log2_max_pic_order_cnt_lsb_minus4);
-    } else if (sps.pic_order_cnt_type == 1) {
-        sps.delta_pic_order_always_zero_flag = (Boolean)bs_read1(&s);
-        sps.offset_for_non_ref_pic = bs_read_se(&s);
-        sps.offset_for_top_to_bottom_field = bs_read_se(&s);
-        sps.num_ref_frames_in_pic_order_cnt_cycle = bs_read_ue(&s);
-        for (int i=0; i<sps.num_ref_frames_in_pic_order_cnt_cycle; i++)
-            sps.offset_for_ref_frame[i] = bs_read_se(&s);
+    gCurSps.pic_order_cnt_type = bs_read_ue(&s);
+    fprintf(myout, "pic_order_cnt_type:                     %d\n", gCurSps.pic_order_cnt_type);
+    if (gCurSps.pic_order_cnt_type == 0) {
+        gCurSps.log2_max_pic_order_cnt_lsb_minus4 = bs_read_ue(&s);
+        fprintf(myout, "  log2_max_pic_order_cnt_lsb_minus4:          %d\n", gCurSps.log2_max_pic_order_cnt_lsb_minus4);
+    } else if (gCurSps.pic_order_cnt_type == 1) {
+        gCurSps.delta_pic_order_always_zero_flag = (Boolean)bs_read1(&s);
+        gCurSps.offset_for_non_ref_pic = bs_read_se(&s);
+        gCurSps.offset_for_top_to_bottom_field = bs_read_se(&s);
+        gCurSps.num_ref_frames_in_pic_order_cnt_cycle = bs_read_ue(&s);
+        for (int i=0; i<gCurSps.num_ref_frames_in_pic_order_cnt_cycle; i++)
+            gCurSps.offset_for_ref_frame[i] = bs_read_se(&s);
     }
 
-    sps.num_ref_frames = bs_read_ue(&s);
-    fprintf(myout, "num_ref_frames:                         %d\n", sps.num_ref_frames);
-    sps.gaps_in_frame_num_value_allowed_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "gaps_in_frame_num_value_allowed_flag:   %d\n", sps.gaps_in_frame_num_value_allowed_flag);
+    gCurSps.num_ref_frames = bs_read_ue(&s);
+    fprintf(myout, "num_ref_frames:                         %d\n", gCurSps.num_ref_frames);
+    gCurSps.gaps_in_frame_num_value_allowed_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "gaps_in_frame_num_value_allowed_flag:   %d\n", gCurSps.gaps_in_frame_num_value_allowed_flag);
 
-    sps.pic_width_in_mbs_minus1 = bs_read_ue(&s);
-    fprintf(myout, "pic_width_in_mbs_minus1:                %d\n", sps.pic_width_in_mbs_minus1);
-    sps.pic_height_in_map_units_minus1 = bs_read_ue(&s);
-    fprintf(myout, "pic_height_in_map_units_minus1:         %d\n", sps.pic_height_in_map_units_minus1);
+    gCurSps.pic_width_in_mbs_minus1 = bs_read_ue(&s);
+    fprintf(myout, "pic_width_in_mbs_minus1:                %d\n", gCurSps.pic_width_in_mbs_minus1);
+    gCurSps.pic_height_in_map_units_minus1 = bs_read_ue(&s);
+    fprintf(myout, "pic_height_in_map_units_minus1:         %d\n", gCurSps.pic_height_in_map_units_minus1);
 
-    sps.frame_mbs_only_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "frame_mbs_only_flag:                    %d\n", sps.frame_mbs_only_flag);
-    if (!sps.frame_mbs_only_flag) {
-        sps.mb_adaptive_frame_field_flag = (Boolean)bs_read1(&s);
-        fprintf(myout, "  mb_adaptive_frame_field_flag:               %d\n", sps.mb_adaptive_frame_field_flag);
+    gCurSps.frame_mbs_only_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "frame_mbs_only_flag:                    %d\n", gCurSps.frame_mbs_only_flag);
+    if (!gCurSps.frame_mbs_only_flag) {
+        gCurSps.mb_adaptive_frame_field_flag = (Boolean)bs_read1(&s);
+        fprintf(myout, "  mb_adaptive_frame_field_flag:               %d\n", gCurSps.mb_adaptive_frame_field_flag);
     }
-    sps.direct_8x8_inference_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "direct_8x8_inference_flag:              %d\n", sps.direct_8x8_inference_flag);
+    gCurSps.direct_8x8_inference_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "direct_8x8_inference_flag:              %d\n", gCurSps.direct_8x8_inference_flag);
 
-    sps.frame_cropping_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "frame_cropping_flag:                    %d\n", sps.frame_cropping_flag);
-    if (sps.frame_cropping_flag) {
-        sps.frame_cropping_rect_left_offset = bs_read_ue(&s);
-        fprintf(myout, "  frame_cropping_rect_left_offset:            %d\n", sps.frame_cropping_rect_left_offset);
-        sps.frame_cropping_rect_right_offset = bs_read_ue(&s);
-        fprintf(myout, "  frame_cropping_rect_right_offset:           %d\n", sps.frame_cropping_rect_right_offset);
-        sps.frame_cropping_rect_top_offset = bs_read_ue(&s);
-        fprintf(myout, "  frame_cropping_rect_top_offset:             %d\n", sps.frame_cropping_rect_top_offset);
-        sps.frame_cropping_rect_bottom_offset = bs_read_ue(&s);
-        fprintf(myout, "  frame_cropping_rect_bottom_offset:          %d\n", sps.frame_cropping_rect_bottom_offset);
+    gCurSps.frame_cropping_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "frame_cropping_flag:                    %d\n", gCurSps.frame_cropping_flag);
+    if (gCurSps.frame_cropping_flag) {
+        gCurSps.frame_cropping_rect_left_offset = bs_read_ue(&s);
+        fprintf(myout, "  frame_cropping_rect_left_offset:            %d\n", gCurSps.frame_cropping_rect_left_offset);
+        gCurSps.frame_cropping_rect_right_offset = bs_read_ue(&s);
+        fprintf(myout, "  frame_cropping_rect_right_offset:           %d\n", gCurSps.frame_cropping_rect_right_offset);
+        gCurSps.frame_cropping_rect_top_offset = bs_read_ue(&s);
+        fprintf(myout, "  frame_cropping_rect_top_offset:             %d\n", gCurSps.frame_cropping_rect_top_offset);
+        gCurSps.frame_cropping_rect_bottom_offset = bs_read_ue(&s);
+        fprintf(myout, "  frame_cropping_rect_bottom_offset:          %d\n", gCurSps.frame_cropping_rect_bottom_offset);
     }
 
     // vui
-    sps.vui_parameters_present_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "vui_parameters_present_flag:            %d\n", sps.vui_parameters_present_flag);
-    if (sps.vui_parameters_present_flag) {
-        printf ("VUI sequence parameters present but not supported, ignored, proceeding to next NALU\n");
+    gCurSps.vui_parameters_present_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "vui_parameters_present_flag:            %d\n", gCurSps.vui_parameters_present_flag);
+    if (gCurSps.vui_parameters_present_flag) {
+        fprintf (myout, "VUI sequence parameters present but not supported, ignored, proceeding to next NALU\n");
     }
-    sps.Valid = TRUE;
-    printf("-------------------------------------------------------\n");
+    gCurSps.Valid = TRUE;
+    fprintf(myout, "-------------------------------------------------------\n");
 
     return 0;
 }
@@ -454,64 +488,63 @@ static int ParseAndDumpSPSInfo(NALU_t * nal)
 static int ParseAndDumpPPSInfo(NALU_t * nal)
 {
     bs_t s;
-    pic_parameter_set_rbsp_t pps;
-    FILE *myout = stdout;
+    FILE *myout = NULL;
 
     bs_init(&s, nal->buf+1, nal->len - 1);
 
-    printf("---------------------PPS info--------------------------\n");
-    pps.pic_parameter_set_id = bs_read_ue(&s);
-    fprintf(myout, "pic_parameter_set_id:          %u\n", pps.pic_parameter_set_id);
-    pps.seq_parameter_set_id = bs_read_ue(&s);
-    fprintf(myout, "seq_parameter_set_id:          %u\n", pps.seq_parameter_set_id);
-    pps.entropy_coding_mode_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "entropy_coding_mode_flag:      %u\n", pps.entropy_coding_mode_flag);
-    pps.pic_order_present_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "pic_order_present_flag:        %u\n", pps.pic_order_present_flag);
-    pps.num_slice_groups_minus1 = bs_read_ue(&s);
-    fprintf(myout, "num_slice_groups_minus1:       %u\n", pps.num_slice_groups_minus1);
-    if (pps.num_slice_groups_minus1 > 0) {
-        pps.slice_group_map_type = bs_read_ue(&s);
-        unsigned type = pps.slice_group_map_type;
+    fprintf(myout, "---------------------PPS info--------------------------\n");
+    gCurPps.pic_parameter_set_id = bs_read_ue(&s);
+    fprintf(myout, "pic_parameter_set_id:          %u\n", gCurPps.pic_parameter_set_id);
+    gCurPps.seq_parameter_set_id = bs_read_ue(&s);
+    fprintf(myout, "seq_parameter_set_id:          %u\n", gCurPps.seq_parameter_set_id);
+    gCurPps.entropy_coding_mode_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "entropy_coding_mode_flag:      %u\n", gCurPps.entropy_coding_mode_flag);
+    gCurPps.pic_order_present_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "pic_order_present_flag:        %u\n", gCurPps.pic_order_present_flag);
+    gCurPps.num_slice_groups_minus1 = bs_read_ue(&s);
+    fprintf(myout, "num_slice_groups_minus1:       %u\n", gCurPps.num_slice_groups_minus1);
+    if (gCurPps.num_slice_groups_minus1 > 0) {
+        gCurPps.slice_group_map_type = bs_read_ue(&s);
+        unsigned type = gCurPps.slice_group_map_type;
         if (type == 0) {
             for (int i=0; i<MAXnum_slice_groups_minus1; i++)
-                pps.run_length_minus1[i] = bs_read_ue(&s);
+                gCurPps.run_length_minus1[i] = bs_read_ue(&s);
         } else if (type == 2) {
             for (int i=0; i<MAXnum_slice_groups_minus1; i++) {
-                pps.top_left[i] = bs_read_ue(&s);
-                pps.bottom_right[i] = bs_read_ue(&s);
+                gCurPps.top_left[i] = bs_read_ue(&s);
+                gCurPps.bottom_right[i] = bs_read_ue(&s);
             }
         } else if (type==3 || type==4 || type==5) {
-            pps.slice_group_change_direction_flag = (Boolean)bs_read1(&s);
-            pps.slice_group_change_rate_minus1 = bs_read_ue(&s);
+            gCurPps.slice_group_change_direction_flag = (Boolean)bs_read1(&s);
+            gCurPps.slice_group_change_rate_minus1 = bs_read_ue(&s);
         } else if (type == 6) {
-            pps.num_slice_group_map_units_minus1 = bs_read_ue(&s);
-            pps.slice_group_id = NULL; // need to be Fixed
+            gCurPps.num_slice_group_map_units_minus1 = bs_read_ue(&s);
+            gCurPps.slice_group_id = NULL; // need to be Fixed
         }
     }
-    pps.num_ref_idx_l0_active_minus1 = bs_read_ue(&s);
-    fprintf(myout, "num_ref_idx_l0_active_minus1:  %u\n", pps.num_ref_idx_l0_active_minus1);
-    pps.num_ref_idx_l1_active_minus1 = bs_read_ue(&s);
-    fprintf(myout, "num_ref_idx_l1_active_minus1:  %u\n", pps.num_ref_idx_l1_active_minus1);
-    pps.weighted_pred_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "weighted_pred_flag:            %u\n", pps.weighted_pred_flag);
-    pps.weighted_bipred_idc = bs_read(&s, 2);
-    fprintf(myout, "weighted_bipred_idc:           %u\n", pps.weighted_bipred_idc);
-    pps.pic_init_qp_minus26 = bs_read_se(&s);
-    fprintf(myout, "pic_init_qp_minus26:          %2d\n", pps.pic_init_qp_minus26);
-    pps.pic_init_qs_minus26 = bs_read_se(&s);
-    fprintf(myout, "pic_init_qs_minus26:          %2d\n", pps.pic_init_qs_minus26);
-    pps.chroma_qp_index_offset = bs_read_se(&s);
-    fprintf(myout, "chroma_qp_index_offset:       %2d\n", pps.chroma_qp_index_offset);
-    pps.deblocking_filter_control_present_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "deblocking_filter_control_present_flag:%u\n", pps.deblocking_filter_control_present_flag);
-    pps.constrained_intra_pred_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "constrained_intra_pred_flag:   %u\n", pps.constrained_intra_pred_flag);
-    pps.redundant_pic_cnt_present_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "redundant_pic_cnt_present_flag:%u\n", pps.redundant_pic_cnt_present_flag);
+    gCurPps.num_ref_idx_l0_active_minus1 = bs_read_ue(&s);
+    fprintf(myout, "num_ref_idx_l0_active_minus1:  %u\n", gCurPps.num_ref_idx_l0_active_minus1);
+    gCurPps.num_ref_idx_l1_active_minus1 = bs_read_ue(&s);
+    fprintf(myout, "num_ref_idx_l1_active_minus1:  %u\n", gCurPps.num_ref_idx_l1_active_minus1);
+    gCurPps.weighted_pred_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "weighted_pred_flag:            %u\n", gCurPps.weighted_pred_flag);
+    gCurPps.weighted_bipred_idc = bs_read(&s, 2);
+    fprintf(myout, "weighted_bipred_idc:           %u\n", gCurPps.weighted_bipred_idc);
+    gCurPps.pic_init_qp_minus26 = bs_read_se(&s);
+    fprintf(myout, "pic_init_qp_minus26:          %2d\n", gCurPps.pic_init_qp_minus26);
+    gCurPps.pic_init_qs_minus26 = bs_read_se(&s);
+    fprintf(myout, "pic_init_qs_minus26:          %2d\n", gCurPps.pic_init_qs_minus26);
+    gCurPps.chroma_qp_index_offset = bs_read_se(&s);
+    fprintf(myout, "chroma_qp_index_offset:       %2d\n", gCurPps.chroma_qp_index_offset);
+    gCurPps.deblocking_filter_control_present_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "deblocking_filter_control_present_flag:%u\n", gCurPps.deblocking_filter_control_present_flag);
+    gCurPps.constrained_intra_pred_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "constrained_intra_pred_flag:   %u\n", gCurPps.constrained_intra_pred_flag);
+    gCurPps.redundant_pic_cnt_present_flag = (Boolean)bs_read1(&s);
+    fprintf(myout, "redundant_pic_cnt_present_flag:%u\n", gCurPps.redundant_pic_cnt_present_flag);
 
-    pps.Valid = TRUE;
-    printf("-------------------------------------------------------\n");
+    gCurPps.Valid = TRUE;
+    fprintf(myout, "-------------------------------------------------------\n");
 
     return 0;
 }
@@ -533,7 +566,7 @@ int simplest_h264_parser(char *url){
     //FILE *myout=fopen("output_log.txt","wb+");
     FILE *myout=stdout;
 
-    h264bitstream=fopen(url, "rb+");
+    h264bitstream=fopen(url, "rb");
     if (h264bitstream==NULL){
         printf("Open file error\n");
         return -1;
