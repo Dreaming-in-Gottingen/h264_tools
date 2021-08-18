@@ -1,25 +1,21 @@
-CC = g++
+CXX = g++
 
 SOURCE_ROOT = $(shell pwd)
 
-CPPFLAGS	:=
-INCLUDE 	:= -I .
+CPPFLAGS        :=
+INCLUDE         := -I .
 
-TARGET      := h264_mediadata_detector
+TARGET_BIN      := spspps_parser
 
-all: $(TARGET)
-SRCS = h264_mediaData_detector.cpp \
-       bs_read.cpp
+CXX_SRCS = $(wildcard *.cpp)
+CXX_OBJS = $(patsubst %.cpp, %.o, $(CXX_SRC))
 
-OBJS = $(patsubst %.cpp, %.o, $(SRCS))
+all: $(TARGET_BIN)
 
-$(TARGET): $(OBJS)
-	$(CC) -o $(TARGET) $(OBJS)
-
-$(OBJS): %.o:%.cpp
-	$(CC) $(CPPFLAGS) $(INCLUDE) -c $^ -o $@
+$(TARGET_BIN):$(CXX_SRCS)
+	$(CXX) $(CPPFLAGS) $(INCLUDE) $^ -o $@
 
 clean:
-	@rm -f *.o $(TARGET)
+	rm -f *.o $(TARGET_BIN)
 
 .PHONY: clean

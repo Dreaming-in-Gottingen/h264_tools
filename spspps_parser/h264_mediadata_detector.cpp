@@ -365,12 +365,13 @@ static int GetFrameType(NALU_t * nal)
                 fprintf(myout, "SH: delta_pic_order_cnt_bottom=%d\n", delta_pic_order_cnt_bottom);
             }
         }
+
+        nalu_idx++;
     }
     else
     {
         nal->frame_type = nal->nal_unit_type;
     }
-    nalu_idx++;
 
     return 0;
 }
@@ -378,11 +379,13 @@ static int GetFrameType(NALU_t * nal)
 static int ParseAndDumpSPSInfo(NALU_t * nal)
 {
     bs_t s;
-    FILE *myout = NULL;
+    //FILE *myout = NULL;
+    static FILE *myout = fopen("sps_info.txt", "wb");
+    static int cnt;
 
     bs_init(&s, nal->buf+1, nal->len - 1);
 
-    fprintf(myout, "---------------------SPS info--------------------------\n");
+    fprintf(myout, "---------------------SPS[%d] info--------------------------\n", cnt++);
     gCurSps.profile_idc = bs_read(&s, 8);
     fprintf(myout, "profile_idc:                            %d\n", gCurSps.profile_idc);
 
@@ -394,7 +397,7 @@ static int ParseAndDumpSPSInfo(NALU_t * nal)
     fprintf(myout, "constrained_set2_flag:                  %d\n", gCurSps.constrained_set2_flag);
     int reserved_zero = bs_read(&s, 5);
     fprintf(myout, "reserved_zero:                          %d\n", reserved_zero);
-    assert(reserved_zero == 0);
+    //assert(reserved_zero == 0); // some bs will assert
 
     gCurSps.level_idc = bs_read(&s, 8);
     fprintf(myout, "level_idc:                              %d\n", gCurSps.level_idc);
@@ -488,11 +491,13 @@ static int ParseAndDumpSPSInfo(NALU_t * nal)
 static int ParseAndDumpPPSInfo(NALU_t * nal)
 {
     bs_t s;
-    FILE *myout = NULL;
+    //FILE *myout = NULL;
+    static FILE *myout = fopen("pps_info.txt", "wb");
+    static int cnt;
 
     bs_init(&s, nal->buf+1, nal->len - 1);
 
-    fprintf(myout, "---------------------PPS info--------------------------\n");
+    fprintf(myout, "---------------------PPS[%d] info--------------------------\n", cnt++);
     gCurPps.pic_parameter_set_id = bs_read_ue(&s);
     fprintf(myout, "pic_parameter_set_id:          %u\n", gCurPps.pic_parameter_set_id);
     gCurPps.seq_parameter_set_id = bs_read_ue(&s);
