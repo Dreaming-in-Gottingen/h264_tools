@@ -84,6 +84,33 @@ typedef struct {
       int delta_pic_order_cnt[2];       // se(v),se(v)
     //if(redundant_pic_cnt_present_flag)
       unsigned redundant_pic_cnt;       // ue(v)
+    //if (slice_type == B)
+      Boolean direct_spatial_mv_pred_flag;          // u(1)
+    //if (slice_type == P || slice_type == SP || slice_type == B)
+      Boolean num_ref_idx_active_override_flag;     // u(1)
+      //if (num_ref_idx_active_override_flag)
+        unsigned num_ref_idx_l0_active_minus1;      // ue(v)
+        //if (slice_type == B)
+          unsigned num_ref_idx_l1_active_minus1;    // ue(v)
+    //ref_pic_list_reordering()
+    //if ((weighted_pred_flag && (slice_type==P || slice_type==SP)) || (weighted_bipred_idc==1 && slice_type==B))
+    //  pred_weight_table()
+    //if (nal_ref_idc != 0)
+    //  dec_ref_pic_marking()
+    //if (entropy_coding_mode_flag && slice_type != I && slice_type != SI)
+      unsigned cabac_init_idc;            // ue(v)
+    int slice_qp_delta;                 // se(v)
+    //if (slice_type == SP || slice_type == SI)
+      //if (slice_type == SP)
+        Boolean sp_for_switch_flag;     // u(1)
+      int slice_qs_delta;               // se(v)
+    //if (deblocking_filter_control_present_flag)
+      unsigned disable_deblocking_filter_idc;   // ue(v)
+      //if (disable_deblocking_filter_idc != 1)
+        int slice_alpha_c0_offset_div2; // se(v)
+        int slice_beta_offset_div2;     // se(v)
+    //if (num_slice_groups_minus1 > 0 && slice_group_map_type >= 3 && slice_group_map_type <= 5)
+      int slice_group_change_cycle; // u(v)
 } slice_header_t;
 
 #define MAXIMUMVALUEOFcpb_cnt   32
@@ -321,6 +348,25 @@ int GetAnnexbNALU (NALU_t *nalu)
     return (pos+rewind);
 }
 
+/*!
+ ************************************************************************
+ * \brief
+ *    calculate Ceil(Log2(uiVal))
+ ************************************************************************
+ */
+unsigned CeilLog2( unsigned uiVal)
+{
+  unsigned uiTmp = uiVal-1;
+  unsigned uiRet = 0;
+
+  while( uiTmp != 0 )
+  {
+    uiTmp >>= 1;
+    uiRet++;
+  }
+  return uiRet;
+}
+
 static int SliceHeaderParse(NALU_t * nal)
 {
     bs_t s;
@@ -399,9 +445,75 @@ static int SliceHeaderParse(NALU_t * nal)
             }
         }
 
-        if(gCurPps.redundant_pic_cnt_present_flag) {
+        if (gCurPps.redundant_pic_cnt_present_flag) {
             sh.redundant_pic_cnt = bs_read_ue(&s);
             fprintf(myout, "SH: redundant_pic_cnt=%d\n", sh.redundant_pic_cnt);
+        }
+
+        if (nal->slice_type == SLICE_TYPE_B) {
+            sh.direct_spatial_mv_pred_flag = (Boolean)bs_read1(&s);
+            fprintf(myout, "SH: direct_spatial_mv_pred_flag=%d\n", sh.direct_spatial_mv_pred_flag);
+        }
+
+        //if (slice_type == P || slice_type == SP || slice_type == B)
+        if (nal->slice_type==SLICE_TYPE_P || nal->slice_type==SLICE_TYPE_B) {
+            sh.num_ref_idx_active_override_flag = (Boolean)bs_read1(&s);
+            fprintf(myout, "SH: num_ref_idx_active_override_flag=%d\n", sh.num_ref_idx_active_override_flag);
+            if (sh.num_ref_idx_active_override_flag) {
+                sh.num_ref_idx_l0_active_minus1 = bs_read_ue(&s);
+                fprintf(myout, "SH: num_ref_idx_l0_active_minus1=%d\n", sh.num_ref_idx_l0_active_minus1);
+                if (nal->slice_type == SLICE_TYPE_B) {
+                    sh.num_ref_idx_l1_active_minus1 = bs_read_ue(&s);
+                    fprintf(myout, "SH: num_ref_idx_l1_active_minus1=%d\n", sh.num_ref_idx_l1_active_minus1);
+                }
+            }
+        }
+
+        // TODO
+        //ref_pic_list_reordering()
+        //if ((weighted_pred_flag && (slice_type==P || slice_type==SP)) || (weighted_bipred_idc==1 && slice_type==B))
+        //  pred_weight_table()
+        //if (nal_ref_idc != 0)
+        //  dec_ref_pic_marking()
+
+        //if (entropy_coding_mode_flag && slice_type != I && slice_type != SI)
+        if (gCurPps.entropy_coding_mode_flag && (nal->slice_type==SLICE_TYPE_B || nal->slice_type==SLICE_TYPE_P)) {
+            sh.cabac_init_idc = bs_read_ue(&s);
+            fprintf(myout, "SH: cabac_init_idc=%d\n", sh.cabac_init_idc);
+        }
+
+        sh.slice_qp_delta = bs_read_se(&s);
+        fprintf(myout, "SH: slice_qp_delta=%d\n", sh.slice_qp_delta);
+
+        //if (sh.slice_type == SP || slice_type == SI)
+        if ((sh.slice_type==3 || sh.slice_type==8) || (sh.slice_type==4 || sh.slice_type==9)) {
+            if (sh.slice_type==3 || sh.slice_type==8) {
+                sh.sp_for_switch_flag = (Boolean)bs_read1(&s);
+                fprintf(myout, "SH: sp_for_switch_flag=%d\n", sh.sp_for_switch_flag);
+            }
+            sh.slice_qs_delta = bs_read_se(&s);
+            fprintf(myout, "SH: slice_qs_delta=%d\n", sh.slice_qs_delta);
+        }
+
+        if (gCurPps.deblocking_filter_control_present_flag) {
+            sh.disable_deblocking_filter_idc = bs_read_ue(&s);
+            fprintf(myout, "SH: disable_deblocking_filter_idc=%d\n", sh.disable_deblocking_filter_idc);
+            if (sh.disable_deblocking_filter_idc != 1) {
+                sh.slice_alpha_c0_offset_div2 = bs_read_se(&s);
+                sh.slice_beta_offset_div2 = bs_read_se(&s);
+                fprintf(myout, "SH: slice_alpha_c0_offset_div2=%d\n", sh.slice_alpha_c0_offset_div2);
+                fprintf(myout, "SH: slice_beta_offset_div2=%d\n", sh.slice_beta_offset_div2);
+            }
+        }
+
+        if (gCurPps.num_slice_groups_minus1>0 && gCurPps.slice_group_map_type>=3 && gCurPps.slice_group_map_type<=5) {
+            int len = (gCurSps.pic_height_in_map_units_minus1+1)*(gCurSps.pic_width_in_mbs_minus1+1) / (gCurPps.slice_group_change_rate_minus1+1);
+            if ((gCurSps.pic_height_in_map_units_minus1+1)*(gCurSps.pic_width_in_mbs_minus1+1) % (gCurPps.slice_group_change_rate_minus1+1)) {
+                len += 1;
+            }
+            len = CeilLog2(len+1);
+            sh.slice_group_change_cycle = bs_read(&s, len);
+            fprintf(myout, "SH: slice_group_change_cycle=%d\n", sh.slice_group_change_cycle);
         }
 
         nalu_idx++;
