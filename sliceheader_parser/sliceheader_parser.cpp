@@ -92,11 +92,77 @@ typedef struct {
         unsigned num_ref_idx_l0_active_minus1;      // ue(v)
         //if (slice_type == B)
           unsigned num_ref_idx_l1_active_minus1;    // ue(v)
+
     //ref_pic_list_reordering()
+      //if (slice_type != I && slice_type != SI)
+        Boolean ref_pic_list_reordering_flag_l0;    // u(1)
+        //if (ref_pic_list_reordering_flag_l0)
+          //do {
+            unsigned remapping_of_pic_nums_idc_l0[16];  // ue(v)
+            //if(remapping_of_pic_nums_idc_l0 == 0 || 1)
+              unsigned abs_diff_pic_num_minus1_l0[16];  // ue(v)
+            //if(remapping_of_pic_nums_idc_l0 == 2)
+              unsigned long_term_pic_idx_l0[16];        // ue(v)
+          //while (remapping_of_pic_nums_idc_l0[i] != 3)
+      //if (slice_type == B)
+        Boolean ref_pic_list_reordering_flag_l1;    // u(1)
+        //if (ref_pic_list_reordering_flag_l1)
+          //do {
+            unsigned remapping_of_pic_nums_idc_l1[16];  // ue(v)
+            //if(remapping_of_pic_nums_idc_l1 == 0 || 1)
+              unsigned abs_diff_pic_num_minus1_l1[16];  // ue(v)
+            //if(remapping_of_pic_nums_idc_l1 == 2)
+              unsigned long_term_pic_idx_l1[16];        // ue(v)
+          //while (remapping_of_pic_nums_idc_l1[i] != 3)
+
     //if ((weighted_pred_flag && (slice_type==P || slice_type==SP)) || (weighted_bipred_idc==1 && slice_type==B))
     //  pred_weight_table()
+        unsigned luma_log2_weight_denom;        // ue(v)
+        unsigned chroma_log2_weight_denom;      // ue(v)
+        //for ( i = 0; i <= num_ref_idx_l0_active_minus1; i++ )
+          Boolean luma_weight_flag_l0;          // u(1)
+          //if (luma_weight_flag_l0)
+            //wp_weight[0][i][0];               // se(v)
+            int wp_weight[2][16][3];  //[list][index][component]
+            //wp_offset[0][i][0];               // se(v)
+            int wp_offset[2][16][3];  //[list][index][component]
+          Boolean chroma_weight_flag_l0;        // u(1)
+          //for (j=1; j<3; j++)
+            //if (chroma_weight_flag_l0)
+             //wp_weight[0][i][j];              // se(v)
+             //wp_offset[0][i][j];              // se(v)
+        //if (slice_type==B)
+          //for (i=0; i<=num_ref_idx_l1_active_minus1; i++)
+            Boolean luma_weight_flag_l1;        // u(1)
+            //if (luma_weight_flag_l1)
+              //wp_weight[1][i][0];             // se(v)
+              //wp_offset[1][i][0];             // se(v)
+            Boolean chroma_weight_flag_l1;      // u(1)
+            //for (j=1; j<3; j++)
+              //if (chroma_weight_flag_l1)
+                //wp_weight[1][i][j];           // se(v)
+                //wp_offset[1][i][j];           // se(v)
+
     //if (nal_ref_idc != 0)
     //  dec_ref_pic_marking()
+        //if (nal_unit_type == 5)
+          Boolean no_output_of_prior_pics_flag; // u(1)
+          Boolean long_term_reference_flag;     // u(1)
+        //else
+          Boolean adaptive_ref_pic_marking_mode_flag;   // u(1)
+          //if (adaptive_ref_pic_marking_mode_flag)
+            //do {
+              unsigned memory_management_control_operation;     // ue(v)
+              //if (memory_management_control_operation == 1 || 3)
+                unsigned difference_of_pic_nums_minus1;         // ue(v)
+              //if (memory_management_control_operation == 2)
+                unsigned long_term_pic_num;                     // ue(v)
+              //if (memory_management_control_operation == 3 || 6)
+                unsigned long_term_frame_idx;                   // ue(v)
+              //if (memory_management_control_operation == 4)
+                unsigned max_long_term_frame_idx_plus1;         // ue(v)
+            //while (memory_management_control_operation != 0)
+
     //if (entropy_coding_mode_flag && slice_type != I && slice_type != SI)
       unsigned cabac_init_idc;            // ue(v)
     int slice_qp_delta;                 // se(v)
@@ -367,6 +433,150 @@ unsigned CeilLog2( unsigned uiVal)
   return uiRet;
 }
 
+void ref_pic_list_reordering(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE *pOutFp)
+{
+    //alloc_ref_pic_list_reordering_buffer(currSlice);
+    // slice_type != I && slice_type != SI
+    if (pNal->slice_type != SLICE_TYPE_I) {
+        pSH->ref_pic_list_reordering_flag_l0 = (Boolean)bs_read1(pBS);
+        fprintf(pOutFp, "SH: ref_pic_list_reordering_flag_l0=%d\n", pSH->ref_pic_list_reordering_flag_l0);
+        if (pSH->ref_pic_list_reordering_flag_l0) {
+            int i = 0;
+            int val;
+            do {
+                val = pSH->remapping_of_pic_nums_idc_l0[i] = bs_read_ue(pBS);
+                fprintf(pOutFp, "SH: remapping_of_pic_nums_idc_l0[%d]=%d\n", i, pSH->remapping_of_pic_nums_idc_l0[i]);
+                if (val == 0 || val == 1) {
+                    pSH->abs_diff_pic_num_minus1_l0[i] = bs_read_ue(pBS);
+                    fprintf(pOutFp, "SH: abs_diff_pic_num_minus1_l0[%d]=%d\n", i, pSH->abs_diff_pic_num_minus1_l0[i]);
+                } else {
+                    if (val == 2) {
+                        pSH->long_term_pic_idx_l0[i] = bs_read_ue(pBS);
+                        fprintf(pOutFp, "SH: long_term_pic_idx_l0[%d]=%d\n", i, pSH->long_term_pic_idx_l0[i]);
+                    }
+                }
+                i++;
+            } while (val != 3);
+        }
+    }
+
+    if (pNal->slice_type == SLICE_TYPE_B) {
+        pSH->ref_pic_list_reordering_flag_l1 = (Boolean)bs_read1(pBS);
+        fprintf(pOutFp, "SH: ref_pic_list_reordering_flag_l1=%d\n", pSH->ref_pic_list_reordering_flag_l1);
+        if (pSH->ref_pic_list_reordering_flag_l1) {
+            int i = 0;
+            int val;
+            do {
+                val = pSH->remapping_of_pic_nums_idc_l1[i] = bs_read_ue(pBS);
+                fprintf(pOutFp, "SH: remapping_of_pic_nums_idc_l1[%d]=%d\n", i, pSH->remapping_of_pic_nums_idc_l1[i]);
+                if (val == 0 || val == 1) {
+                    pSH->abs_diff_pic_num_minus1_l1[i] = bs_read_ue(pBS);
+                    fprintf(pOutFp, "SH: abs_diff_pic_num_minus1_l1[%d]=%d\n", i, pSH->abs_diff_pic_num_minus1_l1[i]);
+                } else {
+                    if (val == 2) {
+                        pSH->long_term_pic_idx_l1[i] = bs_read_ue(pBS);
+                        fprintf(pOutFp, "SH: long_term_pic_idx_l1[%d]=%d\n", i, pSH->long_term_pic_idx_l1[i]);
+                    }
+                }
+                i++;
+            } while (val != 3);
+        }
+    }
+}
+
+void pred_weight_table(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE *pOutFp)
+{
+    pSH->luma_log2_weight_denom = bs_read_ue(pBS);
+    pSH->chroma_log2_weight_denom = bs_read_ue(pBS);
+    fprintf(pOutFp, "SH: luma_log2_weight_denom=%d\n", pSH->luma_log2_weight_denom);
+    fprintf(pOutFp, "SH: chroma_log2_weight_denom=%d\n", pSH->chroma_log2_weight_denom);
+    for (int i=0; i<=pSH->num_ref_idx_l0_active_minus1; i++) {
+        pSH->luma_weight_flag_l0 = (Boolean)bs_read1(pBS);
+        fprintf(pOutFp, "SH: [i=%d], luma_weight_flag_l0=%d\n", i, pSH->luma_weight_flag_l0);
+        if (pSH->luma_weight_flag_l0) {
+            pSH->wp_weight[0][i][0] = bs_read_se(pBS);
+            pSH->wp_offset[0][i][0] = bs_read_se(pBS);
+        } else {
+            pSH->wp_weight[0][i][0] = 1 << pSH->luma_log2_weight_denom;
+            pSH->wp_offset[0][i][0] = bs_read_se(pBS);
+        }
+
+        pSH->chroma_weight_flag_l0 = (Boolean)bs_read1(pBS);
+        fprintf(pOutFp, "SH: [i=%d], chroma_weight_flag_l0=%d\n", i, pSH->chroma_weight_flag_l0);
+        for (int j=1; j<3; j++) {
+            if (pSH->chroma_weight_flag_l0) {
+                pSH->wp_weight[0][i][j] = bs_read_se(pBS);
+                pSH->wp_offset[0][i][j] = bs_read_se(pBS);
+            } else {
+                pSH->wp_weight[0][i][j] = 1 << pSH->chroma_log2_weight_denom;
+                pSH->wp_offset[0][i][j] = bs_read_se(pBS);
+            }
+        }
+    }
+
+    if (pNal->slice_type == SLICE_TYPE_B) {
+      for (int i=0; i<=pSH->num_ref_idx_l1_active_minus1; i++) {
+            pSH->luma_weight_flag_l1 = (Boolean)bs_read1(pBS);
+            fprintf(pOutFp, "SH: [i=%d], luma_weight_flag_l1=%d\n", i, pSH->luma_weight_flag_l1);
+            if (pSH->luma_weight_flag_l1) {
+                pSH->wp_weight[1][i][0] = bs_read_se(pBS);
+                pSH->wp_offset[1][i][0] = bs_read_se(pBS);
+            } else {
+                pSH->wp_weight[1][i][0] = 1 << pSH->luma_log2_weight_denom;
+                pSH->wp_offset[1][i][0] = bs_read_se(pBS);
+            }
+
+        pSH->chroma_weight_flag_l1 = (Boolean)bs_read1(pBS);
+        fprintf(pOutFp, "SH: [i=%d], chroma_weight_flag_l1=%d\n", i, pSH->chroma_weight_flag_l1);
+        for (int j=1; j<3; j++) {
+            if (pSH->chroma_weight_flag_l1) {
+                pSH->wp_weight[1][i][j] = bs_read_se(pBS);
+                pSH->wp_offset[1][i][j] = bs_read_se(pBS);
+            } else {
+                pSH->wp_weight[1][i][j] = 1 << pSH->chroma_log2_weight_denom;
+                pSH->wp_offset[1][i][j] = bs_read_se(pBS);
+            }
+        }
+      }
+    }
+}
+
+void dec_ref_pic_marking(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE *pOutFp)
+{
+    if (pNal->nal_unit_type ==  NALU_TYPE_IDR) {
+        pSH->no_output_of_prior_pics_flag = (Boolean)bs_read1(pBS);
+        pSH->long_term_reference_flag = (Boolean)bs_read1(pBS);
+        fprintf(pOutFp, "SH: no_output_of_prior_pics_flag=%d\n", pSH->no_output_of_prior_pics_flag);
+        fprintf(pOutFp, "SH: long_term_reference_flag=%d\n", pSH->long_term_reference_flag);
+    } else {
+        pSH->adaptive_ref_pic_marking_mode_flag = (Boolean)bs_read1(pBS);
+        fprintf(pOutFp, "SH: adaptive_ref_pic_marking_mode_flag=%d\n", pSH->adaptive_ref_pic_marking_mode_flag);
+        if (pSH->adaptive_ref_pic_marking_mode_flag) {
+            int val;
+            do {
+                val = pSH->memory_management_control_operation = bs_read_ue(pBS);
+                fprintf(pOutFp, "SH: memory_management_control_operation=%d\n", pSH->memory_management_control_operation);
+                if (val == 1 || val == 3) {
+                    pSH->difference_of_pic_nums_minus1 = bs_read_ue(pBS);
+                    fprintf(pOutFp, "SH: difference_of_pic_nums_minus1=%d\n", pSH->difference_of_pic_nums_minus1);
+                }
+                if (val == 2) {
+                    pSH->long_term_pic_num = bs_read_ue(pBS);
+                    fprintf(pOutFp, "SH: long_term_pic_num=%d\n", pSH->long_term_pic_num);
+                }
+                if (val == 3 || val == 6) {
+                    pSH->long_term_frame_idx = bs_read_ue(pBS);
+                    fprintf(pOutFp, "SH: long_term_frame_idx=%d\n", pSH->long_term_frame_idx);
+                }
+                if (val == 4) {
+                    pSH->max_long_term_frame_idx_plus1 = bs_read_ue(pBS);
+                    fprintf(pOutFp, "SH: max_long_term_frame_idx_plus1=%d\n", pSH->max_long_term_frame_idx_plus1);
+                }
+            } while (val != 0);
+        }
+    }
+}
+
 static int SliceHeaderParse(NALU_t * nal)
 {
     bs_t s;
@@ -469,12 +679,17 @@ static int SliceHeaderParse(NALU_t * nal)
             }
         }
 
-        // TODO
         //ref_pic_list_reordering()
+        ref_pic_list_reordering(&sh, nal, &s, myout);
+
         //if ((weighted_pred_flag && (slice_type==P || slice_type==SP)) || (weighted_bipred_idc==1 && slice_type==B))
         //  pred_weight_table()
+        if ((gCurPps.weighted_pred_flag && (nal->slice_type==SLICE_TYPE_P)) || (gCurPps.weighted_bipred_idc==1 && (nal->slice_type==SLICE_TYPE_B)))
+            pred_weight_table(&sh, nal, &s, myout);
+
         //if (nal_ref_idc != 0)
         //  dec_ref_pic_marking()
+        dec_ref_pic_marking(&sh, nal, &s, myout);
 
         //if (entropy_coding_mode_flag && slice_type != I && slice_type != SI)
         if (gCurPps.entropy_coding_mode_flag && (nal->slice_type==SLICE_TYPE_B || nal->slice_type==SLICE_TYPE_P)) {
