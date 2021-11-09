@@ -49,7 +49,7 @@ int main( int argc, char **argv )
     x264_nal_t *nal;
     int i_nal;
 
-    FAIL_IF_ERROR( !(argc > 1), "Example usage: example 352x288 <input.yuv >output.h264\n" );
+    FAIL_IF_ERROR( !(argc > 1), "Example usage: x264_demo 1280x720 <input.yuv >output.h264, csp use fixed I420(YYYYYYYY...UU...VV...\n" );
     FAIL_IF_ERROR( 2 != sscanf( argv[1], "%dx%d", &width, &height ), "resolution not specified or incorrect\n" );
 
     /* Get default params for preset/tuning */

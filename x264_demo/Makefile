@@ -3,7 +3,7 @@ CC = gcc
 SOURCE_ROOT = $(shell pwd)
 
 CFLAGS  :=
-LDFLAGS := -lx264
+LDFLAGS := -L. libx264.so.161
 INCLUDE := -I .
 
 TARGET  := x264_demo
