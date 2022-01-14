@@ -42,6 +42,15 @@ typedef enum {
     NALU_PRIORITY_HIGHEST    = 3
 } NaluPriority;
 
+#define MAX_REFERENCE_PICTURES 16
+
+enum {
+  LIST_0 = 0,
+  LIST_1 = 1,
+  BI_PRED = 2,
+  BI_PRED_L0 = 3,
+  BI_PRED_L1 = 4
+};
 
 typedef struct {
     int startcodeprefix_len;         //! 4 for parameter sets and first slice in picture, 3 for everything else (suggested)
@@ -98,21 +107,21 @@ typedef struct {
         Boolean ref_pic_list_reordering_flag_l0;    // u(1)
         //if (ref_pic_list_reordering_flag_l0)
           //do {
-            unsigned remapping_of_pic_nums_idc_l0[16];  // ue(v)
+            unsigned remapping_of_pic_nums_idc_l0[MAX_REFERENCE_PICTURES];  // ue(v)
             //if(remapping_of_pic_nums_idc_l0 == 0 || 1)
-              unsigned abs_diff_pic_num_minus1_l0[16];  // ue(v)
+              unsigned abs_diff_pic_num_minus1_l0[MAX_REFERENCE_PICTURES];  // ue(v)
             //if(remapping_of_pic_nums_idc_l0 == 2)
-              unsigned long_term_pic_idx_l0[16];        // ue(v)
+              unsigned long_term_pic_idx_l0[MAX_REFERENCE_PICTURES];        // ue(v)
           //while (remapping_of_pic_nums_idc_l0[i] != 3)
       //if (slice_type == B)
         Boolean ref_pic_list_reordering_flag_l1;    // u(1)
         //if (ref_pic_list_reordering_flag_l1)
           //do {
-            unsigned remapping_of_pic_nums_idc_l1[16];  // ue(v)
+            unsigned remapping_of_pic_nums_idc_l1[MAX_REFERENCE_PICTURES];  // ue(v)
             //if(remapping_of_pic_nums_idc_l1 == 0 || 1)
-              unsigned abs_diff_pic_num_minus1_l1[16];  // ue(v)
+              unsigned abs_diff_pic_num_minus1_l1[MAX_REFERENCE_PICTURES];  // ue(v)
             //if(remapping_of_pic_nums_idc_l1 == 2)
-              unsigned long_term_pic_idx_l1[16];        // ue(v)
+              unsigned long_term_pic_idx_l1[MAX_REFERENCE_PICTURES];        // ue(v)
           //while (remapping_of_pic_nums_idc_l1[i] != 3)
 
     //if ((weighted_pred_flag && (slice_type==P || slice_type==SP)) || (weighted_bipred_idc==1 && slice_type==B))
@@ -123,9 +132,9 @@ typedef struct {
           Boolean luma_weight_flag_l0;          // u(1)
           //if (luma_weight_flag_l0)
             //wp_weight[0][i][0];               // se(v)
-            int wp_weight[2][16][3];  //[list][index][component]
+            int wp_weight[2][MAX_REFERENCE_PICTURES][3];  //[list][index][component], copy from JM
             //wp_offset[0][i][0];               // se(v)
-            int wp_offset[2][16][3];  //[list][index][component]
+            int wp_offset[2][MAX_REFERENCE_PICTURES][3];  //[list][index][component]
           Boolean chroma_weight_flag_l0;        // u(1)
           //for (j=1; j<3; j++)
             //if (chroma_weight_flag_l0)
@@ -484,60 +493,109 @@ void ref_pic_list_reordering(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE 
     }
 }
 
+/* copy from JM18.6 */
+void reset_wp_params(slice_header_t *currSlice)
+{
+  int i,comp;
+  int log_weight_denom;
+
+  for (i=0; i<MAX_REFERENCE_PICTURES; i++)
+  {
+    for (comp=0; comp<3; comp++)
+    {
+      log_weight_denom = (comp == 0) ? currSlice->luma_log2_weight_denom : currSlice->chroma_log2_weight_denom;
+      currSlice->wp_weight[0][i][comp] = 1 << log_weight_denom;
+      currSlice->wp_weight[1][i][comp] = 1 << log_weight_denom;
+    }
+  }
+}
+
 void pred_weight_table(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE *pOutFp)
 {
+    int list, i, j;
+    int luma_def, chroma_def;
+    int ref_count[2];
+
+    ref_count[0] = pSH->num_ref_idx_l0_active_minus1 + 1;
+    ref_count[1] = pSH->num_ref_idx_l1_active_minus1 + 1;
+
     pSH->luma_log2_weight_denom = bs_read_ue(pBS);
-    pSH->chroma_log2_weight_denom = bs_read_ue(pBS);
     fprintf(pOutFp, "SH: luma_log2_weight_denom=%d\n", pSH->luma_log2_weight_denom);
-    fprintf(pOutFp, "SH: chroma_log2_weight_denom=%d\n", pSH->chroma_log2_weight_denom);
-    for (int i=0; i<=pSH->num_ref_idx_l0_active_minus1; i++) {
+    if (pSH->luma_log2_weight_denom > 7U) {
+        fprintf(stderr, "error: pSH->luma_log2_weight_denom=%d is out of range!\n", pSH->luma_log2_weight_denom);
+        pSH->luma_log2_weight_denom = 0;
+    }
+    luma_def = 1 << pSH->luma_log2_weight_denom;
+
+    if (gCurSps.chroma_format_idc) {
+        pSH->chroma_log2_weight_denom = bs_read_ue(pBS);
+        fprintf(pOutFp, "SH: chroma_log2_weight_denom=%d\n", pSH->chroma_log2_weight_denom);
+        if (pSH->chroma_log2_weight_denom > 7U) {
+            fprintf(stderr, "error: pSH->chroma_log2_weight_denom=%d is out of range!\n", pSH->luma_log2_weight_denom);
+            pSH->chroma_log2_weight_denom = 0;
+        }
+        chroma_def = 1 << pSH->chroma_log2_weight_denom;
+    }
+
+    reset_wp_params(pSH);
+
+    for (i=0; i<ref_count[LIST_0]; i++) {
+        //int luma_weight_flag_l0, chroma_weight_flag_l1;
         pSH->luma_weight_flag_l0 = (Boolean)bs_read1(pBS);
-        fprintf(pOutFp, "SH: [i=%d], luma_weight_flag_l0=%d\n", i, pSH->luma_weight_flag_l0);
+        fprintf(pOutFp, "SH: [LIST_0], idx=%d, luma_weight_flag_l0=%d\n", i, pSH->luma_weight_flag_l0);
         if (pSH->luma_weight_flag_l0) {
-            pSH->wp_weight[0][i][0] = bs_read_se(pBS);
-            pSH->wp_offset[0][i][0] = bs_read_se(pBS);
+            pSH->wp_weight[LIST_0][i][0] = bs_read_se(pBS);
+            pSH->wp_offset[LIST_0][i][0] = bs_read_se(pBS);
+            pSH->wp_offset[LIST_0][i][0] = pSH->wp_offset[LIST_0][i][0] << gCurSps.bit_depth_luma_minus8;
         } else {
-            pSH->wp_weight[0][i][0] = 1 << pSH->luma_log2_weight_denom;
-            pSH->wp_offset[0][i][0] = bs_read_se(pBS);
+            pSH->wp_weight[LIST_0][i][0] = 1 << pSH->luma_log2_weight_denom;
+            pSH->wp_offset[LIST_0][i][0] = 0;
         }
 
-        pSH->chroma_weight_flag_l0 = (Boolean)bs_read1(pBS);
-        fprintf(pOutFp, "SH: [i=%d], chroma_weight_flag_l0=%d\n", i, pSH->chroma_weight_flag_l0);
-        for (int j=1; j<3; j++) {
-            if (pSH->chroma_weight_flag_l0) {
-                pSH->wp_weight[0][i][j] = bs_read_se(pBS);
-                pSH->wp_offset[0][i][j] = bs_read_se(pBS);
-            } else {
-                pSH->wp_weight[0][i][j] = 1 << pSH->chroma_log2_weight_denom;
-                pSH->wp_offset[0][i][j] = bs_read_se(pBS);
+        if (gCurSps.chroma_format_idc) {
+            pSH->chroma_weight_flag_l0 = (Boolean)bs_read1(pBS);
+            fprintf(pOutFp, "SH: [LIST_0], idx=%d, chroma_weight_flag_l0=%d\n", i, pSH->chroma_weight_flag_l0);
+            for (j=1; j<3; j++) {
+                if (pSH->chroma_weight_flag_l0) {
+                    pSH->wp_weight[LIST_0][i][j] = bs_read_se(pBS);
+                    pSH->wp_offset[LIST_0][i][j] = bs_read_se(pBS);
+                    pSH->wp_offset[LIST_0][i][0] = pSH->wp_offset[LIST_0][i][j] << gCurSps.bit_depth_chroma_minus8;
+                } else {
+                    pSH->wp_weight[LIST_0][i][j] = 1 << pSH->chroma_log2_weight_denom;
+                    pSH->wp_offset[LIST_0][i][j] = 0;
+                }
             }
         }
     }
 
     if (pNal->slice_type == SLICE_TYPE_B) {
-      for (int i=0; i<=pSH->num_ref_idx_l1_active_minus1; i++) {
+        for (i=0; i<=ref_count[LIST_1]; i++) {
             pSH->luma_weight_flag_l1 = (Boolean)bs_read1(pBS);
-            fprintf(pOutFp, "SH: [i=%d], luma_weight_flag_l1=%d\n", i, pSH->luma_weight_flag_l1);
+            fprintf(pOutFp, "SH: [LIST_1], idx=%d, luma_weight_flag_l1=%d\n", i, pSH->luma_weight_flag_l1);
             if (pSH->luma_weight_flag_l1) {
-                pSH->wp_weight[1][i][0] = bs_read_se(pBS);
-                pSH->wp_offset[1][i][0] = bs_read_se(pBS);
+                pSH->wp_weight[LIST_1][i][0] = bs_read_se(pBS);
+                pSH->wp_offset[LIST_1][i][0] = bs_read_se(pBS);
+                pSH->wp_offset[LIST_1][i][0] = pSH->wp_offset[LIST_1][i][0] << gCurSps.bit_depth_luma_minus8;
             } else {
-                pSH->wp_weight[1][i][0] = 1 << pSH->luma_log2_weight_denom;
-                pSH->wp_offset[1][i][0] = bs_read_se(pBS);
+                pSH->wp_weight[LIST_1][i][0] = 1 << pSH->luma_log2_weight_denom;
+                pSH->wp_offset[LIST_1][i][0] = 0;
             }
 
-        pSH->chroma_weight_flag_l1 = (Boolean)bs_read1(pBS);
-        fprintf(pOutFp, "SH: [i=%d], chroma_weight_flag_l1=%d\n", i, pSH->chroma_weight_flag_l1);
-        for (int j=1; j<3; j++) {
-            if (pSH->chroma_weight_flag_l1) {
-                pSH->wp_weight[1][i][j] = bs_read_se(pBS);
-                pSH->wp_offset[1][i][j] = bs_read_se(pBS);
-            } else {
-                pSH->wp_weight[1][i][j] = 1 << pSH->chroma_log2_weight_denom;
-                pSH->wp_offset[1][i][j] = bs_read_se(pBS);
+            if (gCurSps.chroma_format_idc) {
+                pSH->chroma_weight_flag_l1 = (Boolean)bs_read1(pBS);
+                fprintf(pOutFp, "SH: [LIST_1], idx=%d, chroma_weight_flag_l1=%d\n", i, pSH->chroma_weight_flag_l1);
+                for (j=1; j<3; j++) {
+                    if (pSH->chroma_weight_flag_l1) {
+                        pSH->wp_weight[LIST_1][i][j] = bs_read_se(pBS);
+                        pSH->wp_offset[LIST_1][i][j] = bs_read_se(pBS);
+                        pSH->wp_offset[LIST_1][i][j] = pSH->wp_offset[LIST_1][i][0] << gCurSps.bit_depth_luma_minus8;
+                    } else {
+                        pSH->wp_weight[LIST_1][i][j] = 1 << pSH->chroma_log2_weight_denom;
+                        pSH->wp_offset[LIST_1][i][j] = 0;
+                    }
+                }
             }
         }
-      }
     }
 }
 
@@ -589,7 +647,7 @@ static int SliceHeaderParse(NALU_t * nal)
     {
         slice_header_t sh;
         // parse slice header
-        fprintf(myout, "------------------[nalu_idx=%d] slice header info-----------------\n", nalu_idx);
+        fprintf(myout, "\n------------------[nalu_idx=%d] slice header info-----------------\n", nalu_idx);
 
         sh.first_mb_in_slice = bs_read_ue(&s);
         fprintf(myout, "SH: first_mb_in_slice=%d\n", sh.first_mb_in_slice);
@@ -687,9 +745,8 @@ static int SliceHeaderParse(NALU_t * nal)
         if ((gCurPps.weighted_pred_flag && (nal->slice_type==SLICE_TYPE_P)) || (gCurPps.weighted_bipred_idc==1 && (nal->slice_type==SLICE_TYPE_B)))
             pred_weight_table(&sh, nal, &s, myout);
 
-        //if (nal_ref_idc != 0)
-        //  dec_ref_pic_marking()
-        dec_ref_pic_marking(&sh, nal, &s, myout);
+        if (nal->nal_reference_idc != 0)
+            dec_ref_pic_marking(&sh, nal, &s, myout);
 
         //if (entropy_coding_mode_flag && slice_type != I && slice_type != SI)
         if (gCurPps.entropy_coding_mode_flag && (nal->slice_type==SLICE_TYPE_B || nal->slice_type==SLICE_TYPE_P)) {
