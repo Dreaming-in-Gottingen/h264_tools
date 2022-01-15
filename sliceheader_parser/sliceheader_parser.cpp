@@ -527,7 +527,7 @@ void pred_weight_table(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE *pOutF
     }
     luma_def = 1 << pSH->luma_log2_weight_denom;
 
-    if (gCurSps.chroma_format_idc) {
+    if (gCurSps.chroma_format_idc != 0) {
         pSH->chroma_log2_weight_denom = bs_read_ue(pBS);
         fprintf(pOutFp, "SH: chroma_log2_weight_denom=%d\n", pSH->chroma_log2_weight_denom);
         if (pSH->chroma_log2_weight_denom > 7U) {
@@ -614,7 +614,7 @@ void dec_ref_pic_marking(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE *pOu
             do {
                 val = pSH->memory_management_control_operation = bs_read_ue(pBS);
                 fprintf(pOutFp, "SH: memory_management_control_operation=%d\n", pSH->memory_management_control_operation);
-                if (val == 1 || val == 3) {
+                if ((val==1) || (val==3)) {
                     pSH->difference_of_pic_nums_minus1 = bs_read_ue(pBS);
                     fprintf(pOutFp, "SH: difference_of_pic_nums_minus1=%d\n", pSH->difference_of_pic_nums_minus1);
                 }
@@ -622,7 +622,7 @@ void dec_ref_pic_marking(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE *pOu
                     pSH->long_term_pic_num = bs_read_ue(pBS);
                     fprintf(pOutFp, "SH: long_term_pic_num=%d\n", pSH->long_term_pic_num);
                 }
-                if (val == 3 || val == 6) {
+                if ((val==3) || (val==6)) {
                     pSH->long_term_frame_idx = bs_read_ue(pBS);
                     fprintf(pOutFp, "SH: long_term_frame_idx=%d\n", pSH->long_term_frame_idx);
                 }
@@ -826,6 +826,9 @@ static int ParseAndDumpSPSInfo(NALU_t * nal)
     gCurSps.seq_parameter_set_id = bs_read_ue(&s);
     fprintf(myout, "seq_parameter_set_id:                   %d\n", gCurSps.seq_parameter_set_id);
 
+    gCurSps.chroma_format_idc = 1;
+    gCurSps.bit_depth_luma_minus8 = 0;
+    gCurSps.bit_depth_chroma_minus8 = 0;
     if (gCurSps.profile_idc==100 || gCurSps.profile_idc==110 || gCurSps.profile_idc==122 || gCurSps.profile_idc==144) {
         gCurSps.chroma_format_idc = bs_read_ue(&s);
         fprintf(myout, "  chroma_format_idc:                          %d\n", gCurSps.chroma_format_idc);
