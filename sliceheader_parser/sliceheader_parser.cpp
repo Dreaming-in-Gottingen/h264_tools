@@ -190,13 +190,13 @@ typedef struct {
 
 #define MAXIMUMVALUEOFcpb_cnt   32
 typedef struct {
-  unsigned  cpb_cnt;                                            // ue(v)
+  unsigned  cpb_cnt_minus1;                                     // ue(v)
   unsigned  bit_rate_scale;                                     // u(4)
   unsigned  cpb_size_scale;                                     // u(4)
-  //for (SchedSelIdx=0; SchedSelIdx<=cpb_cnt; SchedSelIdx++)
-    unsigned  bit_rate_value [MAXIMUMVALUEOFcpb_cnt];           // ue(v)
-    unsigned  cpb_size_value[MAXIMUMVALUEOFcpb_cnt];            // ue(v)
-    unsigned  vbr_cbr_flag[MAXIMUMVALUEOFcpb_cnt];              // u(1)
+  //for (SchedSelIdx=0; SchedSelIdx<=cpb_cnt_minus1; SchedSelIdx++)
+    unsigned  bit_rate_value_minus1[MAXIMUMVALUEOFcpb_cnt];         // ue(v)
+    unsigned  cpb_size_value_minus1[MAXIMUMVALUEOFcpb_cnt];         // ue(v)
+    unsigned  cbr_flag[MAXIMUMVALUEOFcpb_cnt];                      // u(1)
   unsigned  initial_cpb_removal_delay_length_minus1;            // u(5)
   unsigned  cpb_removal_delay_length_minus1;                    // u(5)
   unsigned  dpb_output_delay_length_minus1;                     // u(5)
@@ -206,6 +206,7 @@ typedef struct {
 typedef struct {
   Boolean      aspect_ratio_info_present_flag;                  // u(1)
     unsigned     aspect_ratio_idc;                              // u(8)
+    // if (aspect_ratio_idc == Extended_SAR)
       unsigned     sar_width;                                   // u(16)
       unsigned     sar_height;                                  // u(16)
   Boolean      overscan_info_present_flag;                      // u(1)
@@ -217,9 +218,9 @@ typedef struct {
       unsigned     colour_primaries;                            // u(8)
       unsigned     transfer_characteristics;                    // u(8)
       unsigned     matrix_coefficients;                         // u(8)
-  Boolean      chroma_location_info_present_flag;               // u(1)
-    unsigned     chroma_location_frame;                         // ue(v)
-    unsigned     chroma_location_field;                         // ue(v)
+  Boolean      chroma_loc_info_present_flag;                    // u(1)
+    unsigned     chroma_sample_loc_type_top_field;              // ue(v)
+    unsigned     chroma_sample_loc_type_bottom_field;           // ue(v)
   Boolean      timing_info_present_flag;                        // u(1)
     unsigned     num_units_in_tick;                             // u(32)
     unsigned     time_scale;                                    // u(32)
@@ -237,7 +238,7 @@ typedef struct {
     unsigned     max_bits_per_mb_denom;                         // ue(v)
     unsigned     log2_max_mv_length_vertical;                   // ue(v)
     unsigned     log2_max_mv_length_horizontal;                 // ue(v)
-    unsigned     max_dec_frame_reordering;                      // ue(v)
+    unsigned     max_num_reorder_frames;                        // ue(v)
     unsigned     max_dec_frame_buffering;                       // ue(v)
 } vui_seq_parameters_t;
 
@@ -346,6 +347,26 @@ static inline int FindStartCodeLen4 (unsigned char *Buf){
         return 1;   //0x00000001
     else
         return 0;
+}
+
+void EBSPtoRBSP(NALU_t *nalu)
+{
+    unsigned char* pb = nalu->buf;
+    unsigned char* pb_end = nalu->buf + nalu->len;
+    while (pb < pb_end) {
+        if ((pb[0]==0) && (pb[1]==0) && (pb[2]==3)) {
+            unsigned char* tmp = pb + 2;
+            while (tmp < pb_end) {
+                tmp[0] = tmp[1];
+                tmp++;
+            }
+            pb_end[-1] = 0;
+            pb_end--;
+            nalu->len -= 1;
+            pb = pb + 3;
+        }
+        pb++;
+    }
 }
 
 /**
@@ -798,6 +819,32 @@ static int SliceHeaderParse(NALU_t * nal)
     return 0;
 }
 
+static void hrd_parameters(bs_t* s, FILE* fp, hrd_parameters_t* hrd_param)
+{
+    hrd_param->cpb_cnt_minus1 = bs_read_ue(s);
+    fprintf(fp, "    cpb_cnt_minus1:                           %u\n", hrd_param->cpb_cnt_minus1);
+    hrd_param->bit_rate_scale = bs_read(s, 4);
+    fprintf(fp, "    bit_rate_scale:                           %u\n", hrd_param->bit_rate_scale);
+    hrd_param->cpb_size_scale = bs_read(s, 4);
+    fprintf(fp, "    cpb_size_scale:                           %u\n", hrd_param->cpb_size_scale);
+    for (int i=0; i<=hrd_param->cpb_cnt_minus1; i++) {
+        hrd_param->bit_rate_value_minus1[i] = bs_read_ue(s);
+        hrd_param->cpb_size_value_minus1[i] = bs_read_ue(s);
+        hrd_param->cbr_flag[i] = bs_read1(s);
+        fprintf(fp, "      bit_rate[%d]:                               %u\n", i, hrd_param->bit_rate_value_minus1[i]);
+        fprintf(fp, "      cpb_size[%d]:                               %u\n", i, hrd_param->cpb_size_value_minus1[i]);
+        fprintf(fp, "      cbr_flag[%d]:                               %u\n", i, hrd_param->cbr_flag[i]);
+    }
+    hrd_param->initial_cpb_removal_delay_length_minus1 = bs_read(s, 5);
+    hrd_param->cpb_removal_delay_length_minus1 = bs_read(s, 5);
+    hrd_param->dpb_output_delay_length_minus1 = bs_read(s, 5);
+    hrd_param->time_offset_length = bs_read(s, 5);
+    fprintf(fp, "    initial_cpb_removal_delay_length_minus1:  %u\n", hrd_param->initial_cpb_removal_delay_length_minus1);
+    fprintf(fp, "    cpb_removal_delay_length_minus1:          %u\n", hrd_param->cpb_removal_delay_length_minus1);
+    fprintf(fp, "    dpb_output_delay_length_minus1:           %u\n", hrd_param->dpb_output_delay_length_minus1);
+    fprintf(fp, "    time_offset_length:                       %u\n", hrd_param->time_offset_length);
+}
+
 static int ParseAndDumpSPSInfo(NALU_t * nal)
 {
     bs_t s;
@@ -819,7 +866,7 @@ static int ParseAndDumpSPSInfo(NALU_t * nal)
     fprintf(myout, "constrained_set2_flag:                  %d\n", gCurSps.constrained_set2_flag);
     int reserved_zero = bs_read(&s, 5);
     fprintf(myout, "reserved_zero:                          %d\n", reserved_zero);
-    //assert(reserved_zero == 0); // some bs will assert
+    //assert(reserved_zero == 0); // some higher profile bs will assert
 
     gCurSps.level_idc = bs_read(&s, 8);
     fprintf(myout, "level_idc:                              %d\n", gCurSps.level_idc);
@@ -905,10 +952,100 @@ static int ParseAndDumpSPSInfo(NALU_t * nal)
     gCurSps.vui_parameters_present_flag = (Boolean)bs_read1(&s);
     fprintf(myout, "vui_parameters_present_flag:            %d\n", gCurSps.vui_parameters_present_flag);
     if (gCurSps.vui_parameters_present_flag) {
-        fprintf (myout, "VUI sequence parameters present but not supported, ignored, proceeding to next NALU\n");
+        //fprintf (myout, "VUI sequence parameters present but not supported, ignored, proceeding to next NALU\n");
+        vui_seq_parameters_t vui_param;
+        memset(&vui_param, 0, sizeof(vui_param));
+        vui_param.aspect_ratio_info_present_flag = (Boolean)bs_read1(&s);
+        fprintf(myout, "  aspect_ratio_info_present_flag:          %d\n", vui_param.aspect_ratio_info_present_flag);
+        if (vui_param.aspect_ratio_info_present_flag) {
+            vui_param.aspect_ratio_idc = bs_read(&s, 8);
+            fprintf(myout, "    aspect_ratio_idc:                         %d\n", vui_param.aspect_ratio_idc);
+            if (vui_param.aspect_ratio_idc == 0xff) {
+                vui_param.sar_width = bs_read(&s, 16);
+                vui_param.sar_height = bs_read(&s, 16);
+                fprintf(myout, "      sar_width:                                %u\n", vui_param.sar_width);
+                fprintf(myout, "      sar_height:                               %u\n", vui_param.sar_height);
+            }
+        }
+        vui_param.overscan_info_present_flag = (Boolean)bs_read1(&s);
+        fprintf(myout, "  overscan_info_present_flag:              %d\n", vui_param.overscan_info_present_flag);
+        if (vui_param.overscan_info_present_flag) {
+            vui_param.overscan_appropriate_flag = (Boolean)bs_read1(&s);
+            fprintf(myout, "    overscan_appropriate_flag:                %d\n", vui_param.overscan_appropriate_flag);
+        }
+        vui_param.video_signal_type_present_flag = (Boolean)bs_read1(&s);
+        fprintf(myout, "  video_signal_type_present_flag:          %d\n", vui_param.video_signal_type_present_flag);
+        if (vui_param.video_signal_type_present_flag) {
+            vui_param.video_format = bs_read(&s, 3);
+            fprintf(myout, "    video_format:                             %u\n", vui_param.video_format);
+            vui_param.video_full_range_flag = (Boolean)bs_read1(&s);
+            fprintf(myout, "    video_full_range_flag:                    %d\n", vui_param.video_full_range_flag);
+            vui_param.colour_description_present_flag = (Boolean)bs_read1(&s);
+            fprintf(myout, "    colour_description_present_flag:          %d\n", vui_param.colour_description_present_flag);
+            if (vui_param.colour_description_present_flag) {
+                vui_param.colour_primaries = bs_read(&s, 8);
+                vui_param.transfer_characteristics = bs_read(&s, 8);
+                vui_param.matrix_coefficients = bs_read(&s, 8);
+                fprintf(myout, "      colour_primaries:                         %u\n", vui_param.colour_primaries);
+                fprintf(myout, "      transfer_characteristics:                 %u\n", vui_param.transfer_characteristics);
+                fprintf(myout, "      matrix_coefficients:                      %u\n", vui_param.matrix_coefficients);
+            }
+        }
+        vui_param.chroma_loc_info_present_flag = (Boolean)bs_read1(&s);
+        fprintf(myout, "  chroma_loc_info_present_flag:            %d\n", vui_param.chroma_loc_info_present_flag);
+        if (vui_param.chroma_loc_info_present_flag) {
+            vui_param.chroma_sample_loc_type_top_field = bs_read_ue(&s);
+            vui_param.chroma_sample_loc_type_bottom_field = bs_read_ue(&s);
+            fprintf(myout, "    chroma_sample_loc_type_top_field:         %u\n", vui_param.chroma_sample_loc_type_top_field);
+            fprintf(myout, "    chroma_sample_loc_type_bottom_field:      %u\n", vui_param.chroma_sample_loc_type_bottom_field);
+        }
+        vui_param.timing_info_present_flag = (Boolean)bs_read1(&s);
+        fprintf(myout, "  timing_info_present_flag:                %d\n", vui_param.timing_info_present_flag);
+        if (vui_param.timing_info_present_flag) {
+            vui_param.num_units_in_tick = bs_read(&s, 32);
+            vui_param.time_scale = bs_read(&s, 32);
+            vui_param.fixed_frame_rate_flag = (Boolean)bs_read1(&s);
+            fprintf(myout, "    num_units_in_tick:                        %u\n", vui_param.num_units_in_tick);
+            fprintf(myout, "    time_scale:                               %u\n", vui_param.time_scale);
+            fprintf(myout, "    fixed_frame_rate_flag:                    %d\n", vui_param.fixed_frame_rate_flag);
+        }
+        vui_param.nal_hrd_parameters_present_flag = (Boolean)bs_read1(&s);
+        fprintf(myout, "  nal_hrd_parameters_present_flag:         %d\n", vui_param.nal_hrd_parameters_present_flag);
+        if (vui_param.nal_hrd_parameters_present_flag) {
+            hrd_parameters(&s, myout, &vui_param.nal_hrd_parameters);
+        }
+        vui_param.vcl_hrd_parameters_present_flag = (Boolean)bs_read1(&s);
+        fprintf(myout, "  vcl_hrd_parameters_present_flag:         %d\n", vui_param.vcl_hrd_parameters_present_flag);
+        if (vui_param.vcl_hrd_parameters_present_flag) {
+            hrd_parameters(&s, myout, &vui_param.vcl_hrd_parameters);
+        }
+        if (vui_param.nal_hrd_parameters_present_flag || vui_param.vcl_hrd_parameters_present_flag) {
+            vui_param.low_delay_hrd_flag = (Boolean)bs_read1(&s);
+            fprintf(myout, "    low_delay_hrd_flag:                       %d\n", vui_param.low_delay_hrd_flag);
+        }
+        vui_param.pic_struct_present_flag = (Boolean)bs_read1(&s);
+        fprintf(myout, "  pic_struct_present_flag:                 %d\n", vui_param.pic_struct_present_flag);
+        vui_param.bitstream_restriction_flag = (Boolean)bs_read1(&s);
+        fprintf(myout, "  bitstream_restriction_flag:              %d\n", vui_param.bitstream_restriction_flag);
+        if (vui_param.bitstream_restriction_flag) {
+            vui_param.motion_vectors_over_pic_boundaries_flag = (Boolean)bs_read1(&s);
+            vui_param.max_bytes_per_pic_denom = bs_read_ue(&s);
+            vui_param.max_bits_per_mb_denom = bs_read_ue(&s);
+            vui_param.log2_max_mv_length_horizontal = bs_read_ue(&s);
+            vui_param.log2_max_mv_length_vertical = bs_read_ue(&s);
+            vui_param.max_num_reorder_frames = bs_read_ue(&s);
+            vui_param.max_dec_frame_buffering = bs_read_ue(&s);
+            fprintf(myout, "    motion_vectors_over_pic_boundaries_flag:  %d\n", vui_param.motion_vectors_over_pic_boundaries_flag);
+            fprintf(myout, "    max_bytes_per_pic_denom:                  %u\n", vui_param.max_bytes_per_pic_denom);
+            fprintf(myout, "    max_bits_per_mb_denom:                    %u\n", vui_param.max_bits_per_mb_denom);
+            fprintf(myout, "    log2_max_mv_length_horizontal:            %u\n", vui_param.log2_max_mv_length_horizontal);
+            fprintf(myout, "    log2_max_mv_length_vertical:              %u\n", vui_param.log2_max_mv_length_vertical);
+            fprintf(myout, "    max_num_reorder_frames:                   %u\n", vui_param.max_num_reorder_frames);
+            fprintf(myout, "    max_dec_frame_buffering:                  %u\n", vui_param.max_dec_frame_buffering);
+        }
     }
     gCurSps.Valid = TRUE;
-    fprintf(myout, "-------------------------------------------------------\n");
+    fprintf(myout, "-------------------------------------------------------\n\n");
 
     return 0;
 }
@@ -1026,6 +1163,7 @@ int bitstream_parse(char *url){
     {
         int data_lenth;
         data_lenth=GetAnnexbNALU(nalu);
+        EBSPtoRBSP(nalu);
         SliceHeaderParse(nalu);
 
         char nal_type_str[16]={0};
@@ -1095,7 +1233,7 @@ int main(int argc, char **argv)
 {
     if (argc != 2)
     {
-        puts("error input! usage: sliceheader_parser input_file_name.h264");
+        printf("error input! usage: %s input_file_name.h264\n", argv[0]);
         return -1;
     }
     bitstream_parse(argv[1]);
