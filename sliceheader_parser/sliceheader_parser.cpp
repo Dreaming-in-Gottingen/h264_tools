@@ -468,49 +468,52 @@ void ref_pic_list_reordering(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE 
     //alloc_ref_pic_list_reordering_buffer(currSlice);
     // slice_type != I && slice_type != SI
     if (pNal->slice_type != SLICE_TYPE_I) {
+        fprintf(pOutFp, "  --ref_pic_list_reordering()--\n");
         pSH->ref_pic_list_reordering_flag_l0 = (Boolean)bs_read1(pBS);
-        fprintf(pOutFp, "SH: ref_pic_list_reordering_flag_l0=%d\n", pSH->ref_pic_list_reordering_flag_l0);
+        fprintf(pOutFp, "  ref_pic_list_reordering_flag_l0:         %d\n", pSH->ref_pic_list_reordering_flag_l0);
         if (pSH->ref_pic_list_reordering_flag_l0) {
             int i = 0;
             int val;
             do {
                 val = pSH->remapping_of_pic_nums_idc_l0[i] = bs_read_ue(pBS);
-                fprintf(pOutFp, "SH: remapping_of_pic_nums_idc_l0[%d]=%d\n", i, pSH->remapping_of_pic_nums_idc_l0[i]);
+                fprintf(pOutFp, "    remapping_of_pic_nums_idc_l0[%d]:         %d\n", i, pSH->remapping_of_pic_nums_idc_l0[i]);
                 if (val == 0 || val == 1) {
                     pSH->abs_diff_pic_num_minus1_l0[i] = bs_read_ue(pBS);
-                    fprintf(pOutFp, "SH: abs_diff_pic_num_minus1_l0[%d]=%d\n", i, pSH->abs_diff_pic_num_minus1_l0[i]);
+                    fprintf(pOutFp, "    abs_diff_pic_num_minus1_l0[%d]:           %d\n", i, pSH->abs_diff_pic_num_minus1_l0[i]);
                 } else {
                     if (val == 2) {
                         pSH->long_term_pic_idx_l0[i] = bs_read_ue(pBS);
-                        fprintf(pOutFp, "SH: long_term_pic_idx_l0[%d]=%d\n", i, pSH->long_term_pic_idx_l0[i]);
+                        fprintf(pOutFp, "    long_term_pic_idx_l0[%d]:                 %d\n", i, pSH->long_term_pic_idx_l0[i]);
                     }
                 }
                 i++;
             } while (val != 3);
         }
+        fprintf(pOutFp, "  --L0 end--\n");
     }
 
     if (pNal->slice_type == SLICE_TYPE_B) {
         pSH->ref_pic_list_reordering_flag_l1 = (Boolean)bs_read1(pBS);
-        fprintf(pOutFp, "SH: ref_pic_list_reordering_flag_l1=%d\n", pSH->ref_pic_list_reordering_flag_l1);
+        fprintf(pOutFp, "  ref_pic_list_reordering_flag_l1:         %d\n", pSH->ref_pic_list_reordering_flag_l1);
         if (pSH->ref_pic_list_reordering_flag_l1) {
             int i = 0;
             int val;
             do {
                 val = pSH->remapping_of_pic_nums_idc_l1[i] = bs_read_ue(pBS);
-                fprintf(pOutFp, "SH: remapping_of_pic_nums_idc_l1[%d]=%d\n", i, pSH->remapping_of_pic_nums_idc_l1[i]);
+                fprintf(pOutFp, "    remapping_of_pic_nums_idc_l1[%d]:         %d\n", i, pSH->remapping_of_pic_nums_idc_l1[i]);
                 if (val == 0 || val == 1) {
                     pSH->abs_diff_pic_num_minus1_l1[i] = bs_read_ue(pBS);
-                    fprintf(pOutFp, "SH: abs_diff_pic_num_minus1_l1[%d]=%d\n", i, pSH->abs_diff_pic_num_minus1_l1[i]);
+                    fprintf(pOutFp, "    abs_diff_pic_num_minus1_l1[%d]:           %d\n", i, pSH->abs_diff_pic_num_minus1_l1[i]);
                 } else {
                     if (val == 2) {
                         pSH->long_term_pic_idx_l1[i] = bs_read_ue(pBS);
-                        fprintf(pOutFp, "SH: long_term_pic_idx_l1[%d]=%d\n", i, pSH->long_term_pic_idx_l1[i]);
+                        fprintf(pOutFp, "    long_term_pic_idx_l1[%d]:                 %d\n", i, pSH->long_term_pic_idx_l1[i]);
                     }
                 }
                 i++;
             } while (val != 3);
         }
+        fprintf(pOutFp, "  --L1 end--\n");
     }
 }
 
@@ -540,8 +543,9 @@ void pred_weight_table(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE *pOutF
     ref_count[0] = pSH->num_ref_idx_l0_active_minus1 + 1;
     ref_count[1] = pSH->num_ref_idx_l1_active_minus1 + 1;
 
+    fprintf(pOutFp, "--pred_weight_table()--\n");
     pSH->luma_log2_weight_denom = bs_read_ue(pBS);
-    fprintf(pOutFp, "SH: luma_log2_weight_denom=%d\n", pSH->luma_log2_weight_denom);
+    fprintf(pOutFp, "luma_log2_weight_denom:    %d\n", pSH->luma_log2_weight_denom);
     if (pSH->luma_log2_weight_denom > 7U) {
         fprintf(stderr, "error: pSH->luma_log2_weight_denom=%d is out of range!\n", pSH->luma_log2_weight_denom);
         pSH->luma_log2_weight_denom = 0;
@@ -550,7 +554,7 @@ void pred_weight_table(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE *pOutF
 
     if (gCurSps.chroma_format_idc != 0) {
         pSH->chroma_log2_weight_denom = bs_read_ue(pBS);
-        fprintf(pOutFp, "SH: chroma_log2_weight_denom=%d\n", pSH->chroma_log2_weight_denom);
+        fprintf(pOutFp, "  chroma_log2_weight_denom:  %d\n", pSH->chroma_log2_weight_denom);
         if (pSH->chroma_log2_weight_denom > 7U) {
             fprintf(stderr, "error: pSH->chroma_log2_weight_denom=%d is out of range!\n", pSH->luma_log2_weight_denom);
             pSH->chroma_log2_weight_denom = 0;
@@ -563,7 +567,7 @@ void pred_weight_table(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE *pOutF
     for (i=0; i<ref_count[LIST_0]; i++) {
         //int luma_weight_flag_l0, chroma_weight_flag_l1;
         pSH->luma_weight_flag_l0 = (Boolean)bs_read1(pBS);
-        fprintf(pOutFp, "SH: [LIST_0], idx=%d, luma_weight_flag_l0=%d\n", i, pSH->luma_weight_flag_l0);
+        fprintf(pOutFp, "  [LIST_0], idx=%d, luma_weight_flag_l0:    %d\n", i, pSH->luma_weight_flag_l0);
         if (pSH->luma_weight_flag_l0) {
             pSH->wp_weight[LIST_0][i][0] = bs_read_se(pBS);
             pSH->wp_offset[LIST_0][i][0] = bs_read_se(pBS);
@@ -575,7 +579,7 @@ void pred_weight_table(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE *pOutF
 
         if (gCurSps.chroma_format_idc) {
             pSH->chroma_weight_flag_l0 = (Boolean)bs_read1(pBS);
-            fprintf(pOutFp, "SH: [LIST_0], idx=%d, chroma_weight_flag_l0=%d\n", i, pSH->chroma_weight_flag_l0);
+            fprintf(pOutFp, "  [LIST_0], idx=%d, chroma_weight_flag_l0:  %d\n", i, pSH->chroma_weight_flag_l0);
             for (j=1; j<3; j++) {
                 if (pSH->chroma_weight_flag_l0) {
                     pSH->wp_weight[LIST_0][i][j] = bs_read_se(pBS);
@@ -592,7 +596,7 @@ void pred_weight_table(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE *pOutF
     if (pNal->slice_type == SLICE_TYPE_B) {
         for (i=0; i<=ref_count[LIST_1]; i++) {
             pSH->luma_weight_flag_l1 = (Boolean)bs_read1(pBS);
-            fprintf(pOutFp, "SH: [LIST_1], idx=%d, luma_weight_flag_l1=%d\n", i, pSH->luma_weight_flag_l1);
+            fprintf(pOutFp, "  [LIST_1], idx=%d, luma_weight_flag_l1:    %d\n", i, pSH->luma_weight_flag_l1);
             if (pSH->luma_weight_flag_l1) {
                 pSH->wp_weight[LIST_1][i][0] = bs_read_se(pBS);
                 pSH->wp_offset[LIST_1][i][0] = bs_read_se(pBS);
@@ -604,7 +608,7 @@ void pred_weight_table(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE *pOutF
 
             if (gCurSps.chroma_format_idc) {
                 pSH->chroma_weight_flag_l1 = (Boolean)bs_read1(pBS);
-                fprintf(pOutFp, "SH: [LIST_1], idx=%d, chroma_weight_flag_l1=%d\n", i, pSH->chroma_weight_flag_l1);
+                fprintf(pOutFp, "  [LIST_1], idx=%d, chroma_weight_flag_l1:  %d\n", i, pSH->chroma_weight_flag_l1);
                 for (j=1; j<3; j++) {
                     if (pSH->chroma_weight_flag_l1) {
                         pSH->wp_weight[LIST_1][i][j] = bs_read_se(pBS);
@@ -622,34 +626,35 @@ void pred_weight_table(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE *pOutF
 
 void dec_ref_pic_marking(slice_header_t *pSH, NALU_t *pNal, bs_t *pBS, FILE *pOutFp)
 {
+    fprintf(pOutFp, "--dec_ref_pic_marking()--\n");
     if (pNal->nal_unit_type ==  NALU_TYPE_IDR) {
         pSH->no_output_of_prior_pics_flag = (Boolean)bs_read1(pBS);
         pSH->long_term_reference_flag = (Boolean)bs_read1(pBS);
-        fprintf(pOutFp, "SH: no_output_of_prior_pics_flag=%d\n", pSH->no_output_of_prior_pics_flag);
-        fprintf(pOutFp, "SH: long_term_reference_flag=%d\n", pSH->long_term_reference_flag);
+        fprintf(pOutFp, "  no_output_of_prior_pics_flag:        %d\n", pSH->no_output_of_prior_pics_flag);
+        fprintf(pOutFp, "  long_term_reference_flag:            %d\n", pSH->long_term_reference_flag);
     } else {
         pSH->adaptive_ref_pic_marking_mode_flag = (Boolean)bs_read1(pBS);
-        fprintf(pOutFp, "SH: adaptive_ref_pic_marking_mode_flag=%d\n", pSH->adaptive_ref_pic_marking_mode_flag);
+        fprintf(pOutFp, "  adaptive_ref_pic_marking_mode_flag:  %d\n", pSH->adaptive_ref_pic_marking_mode_flag);
         if (pSH->adaptive_ref_pic_marking_mode_flag) {
             int val;
             do {
                 val = pSH->memory_management_control_operation = bs_read_ue(pBS);
-                fprintf(pOutFp, "SH: memory_management_control_operation=%d\n", pSH->memory_management_control_operation);
+                fprintf(pOutFp, "    memory_management_control_operation:   %d\n", pSH->memory_management_control_operation);
                 if ((val==1) || (val==3)) {
                     pSH->difference_of_pic_nums_minus1 = bs_read_ue(pBS);
-                    fprintf(pOutFp, "SH: difference_of_pic_nums_minus1=%d\n", pSH->difference_of_pic_nums_minus1);
+                    fprintf(pOutFp, "      difference_of_pic_nums_minus1:         %d\n", pSH->difference_of_pic_nums_minus1);
                 }
                 if (val == 2) {
                     pSH->long_term_pic_num = bs_read_ue(pBS);
-                    fprintf(pOutFp, "SH: long_term_pic_num=%d\n", pSH->long_term_pic_num);
+                    fprintf(pOutFp, "      long_term_pic_num:                     %d\n", pSH->long_term_pic_num);
                 }
                 if ((val==3) || (val==6)) {
                     pSH->long_term_frame_idx = bs_read_ue(pBS);
-                    fprintf(pOutFp, "SH: long_term_frame_idx=%d\n", pSH->long_term_frame_idx);
+                    fprintf(pOutFp, "      long_term_frame_idx:                   %d\n", pSH->long_term_frame_idx);
                 }
                 if (val == 4) {
                     pSH->max_long_term_frame_idx_plus1 = bs_read_ue(pBS);
-                    fprintf(pOutFp, "SH: max_long_term_frame_idx_plus1=%d\n", pSH->max_long_term_frame_idx_plus1);
+                    fprintf(pOutFp, "      max_long_term_frame_idx_plus1:         %d\n", pSH->max_long_term_frame_idx_plus1);
                 }
             } while (val != 0);
         }
@@ -671,9 +676,9 @@ static int SliceHeaderParse(NALU_t * nal)
         fprintf(myout, "\n------------------[nalu_idx=%d] slice header info-----------------\n", nalu_idx);
 
         sh.first_mb_in_slice = bs_read_ue(&s);
-        fprintf(myout, "SH: first_mb_in_slice=%d\n", sh.first_mb_in_slice);
+        fprintf(myout, "first_mb_in_slice:      %d\n", sh.first_mb_in_slice);
         sh.slice_type = bs_read_ue(&s);
-        fprintf(myout, "SH: slice_type=%d\n", sh.slice_type);
+        fprintf(myout, "slice_type:             %d\n", sh.slice_type);
         switch(sh.slice_type)
         {
         case 0: case 5: /* P */
@@ -696,64 +701,64 @@ static int SliceHeaderParse(NALU_t * nal)
             break;
         }
         sh.pic_parameter_set_id = bs_read_ue(&s);
-        fprintf(myout, "SH: pic_parameter_set_id=%d\n", sh.pic_parameter_set_id);
+        fprintf(myout, "pic_parameter_set_id:   %d\n", sh.pic_parameter_set_id);
 
         sh.frame_num = bs_read(&s, gCurSps.log2_max_frame_num_minus4 + 4);
-        fprintf(myout, "SH: frame_num=%d\n", sh.frame_num);
+        fprintf(myout, "frame_num:              %d\n", sh.frame_num);
+
         if (!gCurSps.frame_mbs_only_flag) {
             // field pic
             sh.field_pic_flag = (Boolean)bs_read1(&s);
-            fprintf(myout, "SH: field_pic_flag=%d\n", sh.field_pic_flag);
+            fprintf(myout, "  field_pic_flag:         %d\n", sh.field_pic_flag);
             if (sh.field_pic_flag) {
                 sh.bottom_field_flag = (Boolean)bs_read1(&s);
-                fprintf(myout, "SH: bottom_field_flag=%d\n", sh.bottom_field_flag);
+                fprintf(myout, "    bottom_field_flag:      %d\n", sh.bottom_field_flag);
             }
         }
 
         if (nal->nal_unit_type == NALU_TYPE_IDR) {
             sh.idr_pic_id = bs_read_ue(&s);
-            fprintf(myout, "SH: idr_pic_id=%d\n", sh.idr_pic_id);
+            fprintf(myout, "  idr_pic_id:             %d\n", sh.idr_pic_id);
         }
 
         if (gCurSps.pic_order_cnt_type == 0) {
             sh.pic_order_cnt_lsb = bs_read(&s, gCurSps.log2_max_pic_order_cnt_lsb_minus4 + 4);
-            fprintf(myout, "SH: pic_order_cnt_lsb=%d\n", sh.pic_order_cnt_lsb);
-
+            fprintf(myout, "  pic_order_cnt_lsb:      %d\n", sh.pic_order_cnt_lsb);
             if (gCurPps.pic_order_present_flag && !sh.field_pic_flag) {
                 sh.delta_pic_order_cnt_bottom = bs_read_se(&s);
-                fprintf(myout, "SH: delta_pic_order_cnt_bottom=%d\n", sh.delta_pic_order_cnt_bottom);
+                fprintf(myout, "    delta_pic_order_cnt_bottom: %d\n", sh.delta_pic_order_cnt_bottom);
             }
         }
 
         if (gCurSps.pic_order_cnt_type==1 && !gCurSps.delta_pic_order_always_zero_flag) {
             sh.delta_pic_order_cnt[0] = bs_read_se(&s);
-            fprintf(myout, "SH: delta_pic_order_cnt[0]=%d\n", sh.delta_pic_order_cnt[0]);
+            fprintf(myout, "  delta_pic_order_cnt[0]: %d\n", sh.delta_pic_order_cnt[0]);
             if (gCurPps.pic_order_present_flag && !sh.field_pic_flag) {
                 sh.delta_pic_order_cnt[1] = bs_read_se(&s);
-                fprintf(myout, "SH: delta_pic_order_cnt[1]=%d\n", sh.delta_pic_order_cnt[1]);
+                fprintf(myout, "    delta_pic_order_cnt[1]: %d\n", sh.delta_pic_order_cnt[1]);
             }
         }
 
         if (gCurPps.redundant_pic_cnt_present_flag) {
             sh.redundant_pic_cnt = bs_read_ue(&s);
-            fprintf(myout, "SH: redundant_pic_cnt=%d\n", sh.redundant_pic_cnt);
+            fprintf(myout, "  redundant_pic_cnt:      %d\n", sh.redundant_pic_cnt);
         }
 
         if (nal->slice_type == SLICE_TYPE_B) {
             sh.direct_spatial_mv_pred_flag = (Boolean)bs_read1(&s);
-            fprintf(myout, "SH: direct_spatial_mv_pred_flag=%d\n", sh.direct_spatial_mv_pred_flag);
+            fprintf(myout, "  direct_spatial_mv_pred: %d\n", sh.direct_spatial_mv_pred_flag);
         }
 
         //if (slice_type == P || slice_type == SP || slice_type == B)
         if (nal->slice_type==SLICE_TYPE_P || nal->slice_type==SLICE_TYPE_B) {
             sh.num_ref_idx_active_override_flag = (Boolean)bs_read1(&s);
-            fprintf(myout, "SH: num_ref_idx_active_override_flag=%d\n", sh.num_ref_idx_active_override_flag);
+            fprintf(myout, "  num_ref_idx_active_override_flag: %d\n", sh.num_ref_idx_active_override_flag);
             if (sh.num_ref_idx_active_override_flag) {
                 sh.num_ref_idx_l0_active_minus1 = bs_read_ue(&s);
-                fprintf(myout, "SH: num_ref_idx_l0_active_minus1=%d\n", sh.num_ref_idx_l0_active_minus1);
+                fprintf(myout, "    num_ref_idx_l0_active_minus1:     %d\n", sh.num_ref_idx_l0_active_minus1);
                 if (nal->slice_type == SLICE_TYPE_B) {
                     sh.num_ref_idx_l1_active_minus1 = bs_read_ue(&s);
-                    fprintf(myout, "SH: num_ref_idx_l1_active_minus1=%d\n", sh.num_ref_idx_l1_active_minus1);
+                    fprintf(myout, "      num_ref_idx_l1_active_minus1:     %d\n", sh.num_ref_idx_l1_active_minus1);
                 }
             }
         }
@@ -772,30 +777,30 @@ static int SliceHeaderParse(NALU_t * nal)
         //if (entropy_coding_mode_flag && slice_type != I && slice_type != SI)
         if (gCurPps.entropy_coding_mode_flag && (nal->slice_type==SLICE_TYPE_B || nal->slice_type==SLICE_TYPE_P)) {
             sh.cabac_init_idc = bs_read_ue(&s);
-            fprintf(myout, "SH: cabac_init_idc=%d\n", sh.cabac_init_idc);
+            fprintf(myout, "  cabac_init_idc:         %d\n", sh.cabac_init_idc);
         }
 
         sh.slice_qp_delta = bs_read_se(&s);
-        fprintf(myout, "SH: slice_qp_delta=%d\n", sh.slice_qp_delta);
+        fprintf(myout, "slice_qp_delta:         %d\n", sh.slice_qp_delta);
 
         //if (sh.slice_type == SP || slice_type == SI)
         if ((sh.slice_type==3 || sh.slice_type==8) || (sh.slice_type==4 || sh.slice_type==9)) {
             if (sh.slice_type==3 || sh.slice_type==8) {
                 sh.sp_for_switch_flag = (Boolean)bs_read1(&s);
-                fprintf(myout, "SH: sp_for_switch_flag=%d\n", sh.sp_for_switch_flag);
+                fprintf(myout, "    sp_for_switch_flag:     %d\n", sh.sp_for_switch_flag);
             }
             sh.slice_qs_delta = bs_read_se(&s);
-            fprintf(myout, "SH: slice_qs_delta=%d\n", sh.slice_qs_delta);
+            fprintf(myout, "  slice_qs_delta:         %d\n", sh.slice_qs_delta);
         }
 
         if (gCurPps.deblocking_filter_control_present_flag) {
             sh.disable_deblocking_filter_idc = bs_read_ue(&s);
-            fprintf(myout, "SH: disable_deblocking_filter_idc=%d\n", sh.disable_deblocking_filter_idc);
+            fprintf(myout, "  disable_deblocking_filter_idc:    %d\n", sh.disable_deblocking_filter_idc);
             if (sh.disable_deblocking_filter_idc != 1) {
                 sh.slice_alpha_c0_offset_div2 = bs_read_se(&s);
                 sh.slice_beta_offset_div2 = bs_read_se(&s);
-                fprintf(myout, "SH: slice_alpha_c0_offset_div2=%d\n", sh.slice_alpha_c0_offset_div2);
-                fprintf(myout, "SH: slice_beta_offset_div2=%d\n", sh.slice_beta_offset_div2);
+                fprintf(myout, "    slice_alpha_c0_offset_div2:       %d\n", sh.slice_alpha_c0_offset_div2);
+                fprintf(myout, "    slice_beta_offset_div2:           %d\n", sh.slice_beta_offset_div2);
             }
         }
 
@@ -806,7 +811,7 @@ static int SliceHeaderParse(NALU_t * nal)
             }
             len = CeilLog2(len+1);
             sh.slice_group_change_cycle = bs_read(&s, len);
-            fprintf(myout, "SH: slice_group_change_cycle=%d\n", sh.slice_group_change_cycle);
+            fprintf(myout, "  slice_group_change_cycle:         %d\n", sh.slice_group_change_cycle);
         }
 
         nalu_idx++;
