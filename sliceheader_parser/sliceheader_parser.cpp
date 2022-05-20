@@ -42,6 +42,16 @@ typedef enum {
     NALU_PRIORITY_HIGHEST    = 3
 } NaluPriority;
 
+#define PROFILE_H264_BASELINE             66
+#define PROFILE_H264_CONSTRAINED_BASELINE 66 // with constraint_set1_flag=1
+#define PROFILE_H264_MAIN                 77
+#define PROFILE_H264_EXTENDED             88
+#define PROFILE_H264_HIGH                 100
+#define PROFILE_H264_HIGH_10              110
+#define PROFILE_H264_HIGH_422             122
+#define PROFILE_H264_HIGH_444             144
+
+
 #define MAX_REFERENCE_PICTURES 16
 
 enum {
@@ -861,17 +871,53 @@ static int ParseAndDumpSPSInfo(NALU_t * nal)
 
     fprintf(myout, "---------------------SPS[%d] info--------------------------\n", cnt++);
     gCurSps.profile_idc = bs_read(&s, 8);
-    fprintf(myout, "profile_idc:                            %d\n", gCurSps.profile_idc);
+    //fprintf(myout, "profile_idc:                            %d\n", gCurSps.profile_idc);
 
     gCurSps.constrained_set0_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "constrained_set0_flag:                  %d\n", gCurSps.constrained_set0_flag);
+    //fprintf(myout, "constrained_set0_flag:                  %d\n", gCurSps.constrained_set0_flag);
     gCurSps.constrained_set1_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "constrained_set1_flag:                  %d\n", gCurSps.constrained_set1_flag);
+    //fprintf(myout, "constrained_set1_flag:                  %d\n", gCurSps.constrained_set1_flag);
     gCurSps.constrained_set2_flag = (Boolean)bs_read1(&s);
-    fprintf(myout, "constrained_set2_flag:                  %d\n", gCurSps.constrained_set2_flag);
+    //fprintf(myout, "constrained_set2_flag:                  %d\n", gCurSps.constrained_set2_flag);
     int reserved_zero = bs_read(&s, 5);
-    fprintf(myout, "reserved_zero:                          %d\n", reserved_zero);
+    //fprintf(myout, "reserved_zero:                          %#x\n", reserved_zero);
     //assert(reserved_zero == 0); // some higher profile bs will assert
+
+    const char *profile_str = NULL;
+    switch (gCurSps.profile_idc) {
+        case PROFILE_H264_BASELINE:
+            if (gCurSps.constrained_set1_flag)
+                profile_str = "constrained_baseline";
+            else
+                profile_str = "baseline";
+            break;
+        case PROFILE_H264_MAIN:
+            profile_str = "main";
+            break;
+        case PROFILE_H264_EXTENDED:
+            profile_str = "extended";
+            break;
+        case PROFILE_H264_HIGH:
+            profile_str = "high";
+            break;
+        case PROFILE_H264_HIGH_10:
+            profile_str = "high_10";
+            break;
+        case PROFILE_H264_HIGH_422:
+            profile_str = "high_422";
+            break;
+        case PROFILE_H264_HIGH_444:
+            profile_str = "high_444";
+            break;
+        default:
+            profile_str = "others";
+            break;
+    }
+    fprintf(myout, "profile_idc:                            %d(%s)\n", gCurSps.profile_idc, profile_str);
+    fprintf(myout, "constrained_set0_flag:                  %d\n", gCurSps.constrained_set0_flag);
+    fprintf(myout, "constrained_set1_flag:                  %d\n", gCurSps.constrained_set1_flag);
+    fprintf(myout, "constrained_set2_flag:                  %d\n", gCurSps.constrained_set2_flag);
+    fprintf(myout, "reserved_zero:                          %#x\n", reserved_zero);
 
     gCurSps.level_idc = bs_read(&s, 8);
     fprintf(myout, "level_idc:                              %d\n", gCurSps.level_idc);
